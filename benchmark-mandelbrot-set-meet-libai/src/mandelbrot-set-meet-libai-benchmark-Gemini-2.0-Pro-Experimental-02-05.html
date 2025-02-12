@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fps-container {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: black;
+            font-family: monospace;
+            font-size: 12px;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 5px;
+            border-radius: 5px;
+            z-index: 10;
+            /* Ensure it's above the canvas */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="fps-container">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avg-fps">0</span></div>
+        <div>CURRENT FRAME: <span id="current-frame">0/200</span></div>
+    </div>
+    <canvas id="mandelbrotCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let frame = 0;
+        const maxFrames = 200;
+        const zoomFactor = 1.005;
+        let scale = 0.5; // Initial scale
+        let centerX = -0.75; //  Mandelbrot's main cardioid and bulb junction.
+        let centerY = 0;
+
+
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const chars = Array.from(new Set(poem.replace(/[，。]/g, ''))).join('');
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde",
+            "#8491c3", "#867ba9", "#68699b", "#706caa", "#5654a2", "#4d4398",
+            "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c",
+            "#17184b", "#0f2350"
+        ];
+        const fontSize = 8;
+
+        let lastTime = performance.now();
+        let fps = 0;
+        let frameTimes = [];
+        let avgFps = 0;
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            ctx.font = `${fontSize}px monospace`;
+            ctx.textBaseline = 'top'; // Important for consistent positioning
+        }
+
+        function isInMainCardioid(cRe, cIm) {
+            const q = (cRe - 0.25) * (cRe - 0.25) + cIm * cIm;
+            return q * (q + (cRe - 0.25)) <= 0.25 * cIm * cIm;
+        }
+
+        function isInPeriodBulb(cRe, cIm) {
+            return (cRe + 1) * (cRe + 1) + cIm * cIm <= 0.0625;
+        }
+
+        function mandelbrot(cRe, cIm) {
+            if (isInMainCardioid(cRe, cIm) || isInPeriodBulb(cRe, cIm)) {
+                return -1; // Indicate it's inside and should be skipped.
+            }
+
+            let zRe = 0;
+            let zIm = 0;
+            let n = 0;
+            const maxIterations = colors.length * 2; // More iterations for smoother transitions
+
+            while (zRe * zRe + zIm * zIm <= 4 && n < maxIterations) {
+                const zReNew = zRe * zRe - zIm * zIm + cRe;
+                const zImNew = 2 * zRe * zIm + cIm;
+                zRe = zReNew;
+                zIm = zImNew;
+                n++;
+            }
+            return n;
+        }
+
+
+        function render() {
+            ctx.clearRect(0, 0, width, height);
+
+            const startX = centerX - (width / 2) * (scale / width * fontSize);
+            const startY = centerY - (height / 2) * (scale / height * fontSize);
+
+
+            const pixelSizeX = (scale * fontSize) / width * 2
+            const pixelSizeY = (scale * fontSize) / height * 2
+
+            for (let y = 0; y < height; y += fontSize) {
+                for (let x = 0; x < width; x += fontSize) {
+                    const cRe = startX + x * pixelSizeX;
+                    const cIm = startY + y * pixelSizeY;
+                    const n = mandelbrot(cRe, cIm);
+
+                    if (n === -1) {
+                        continue; // Skip main cardioid and bulb
+                    }
+
+                    const colorIndex = colors.length - 1 - (n % colors.length);
+                    ctx.fillStyle = colors[colorIndex];
+                    const charIndex = (Math.floor(n / colors.length)) % chars.length;
+
+                    ctx.fillText(chars[charIndex], x, y);
+                }
+            }
+
+            scale *= zoomFactor;
+            frame = (frame + 1) % maxFrames;
+            if (frame === 0) {
+                scale = 0.5; // Reset scale
+
+                // Calculate and update average FPS
+                if (frameTimes.length > 0) {
+                    const totalTime = frameTimes.reduce((sum, time) => sum + time, 0);
+                    avgFps = 1000 / (totalTime / frameTimes.length);
+                    document.getElementById('avg-fps').textContent = avgFps.toFixed(2);
+                }
+                frameTimes = []; // Reset for next cycle
+
+            }
+
+            // FPS Calculation
+            const currentTime = performance.now();
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+            fps = 1000 / deltaTime;
+            frameTimes.push(deltaTime);
+
+            // Update FPS and frame indicators
+            document.getElementById('fps').textContent = fps.toFixed(2);
+            document.getElementById('current-frame').textContent = `${frame + 1}/200`;
+
+            requestAnimationFrame(render);
+        }
+
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        render();
+
+    </script>
+</body>
+
+</html>

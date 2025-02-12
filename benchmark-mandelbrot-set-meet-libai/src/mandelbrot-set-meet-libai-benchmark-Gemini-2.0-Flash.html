@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Mandelbrot Set Animation</title>
+<style>
+body {
+  margin: 0;
+  overflow: hidden;
+  background-color: #000;
+  font-family: monospace;
+}
+
+canvas {
+  display: block;
+}
+
+#fps-indicator {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background-color: rgba(255, 255, 255, 0.5);
+  color: black;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  z-index: 10;
+}
+</style>
+</head>
+<body>
+<canvas id="mandelbrotCanvas"></canvas>
+<div id="fps-indicator">
+    FPS: <span id="fps">--</span><br>
+    AVG FPS: <span id="avg-fps">--</span><br>
+    CURRENT FRAME: <span id="frame-count">0/200</span>
+</div>
+
+<script>
+const canvas = document.getElementById('mandelbrotCanvas');
+const ctx = canvas.getContext('2d');
+const fpsElement = document.getElementById('fps');
+const avgFpsElement = document.getElementById('avg-fps');
+const frameCountElement = document.getElementById('frame-count');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const text = Array.from(new Set("床前明月光，疑是地上霜。举头望明月，低头思故乡".replace(/[^a-zA-Z\u4e00-\u9fa5]/g, "")));
+const colors = ['#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'];
+const fontSize = 8;
+const maxIterations = 100; // Reduced for performance.  Can increase, but will impact framerate.
+
+let scale = 0.5;
+let frame = 0;
+const maxFrames = 200;
+const centerX = -0.75;  // Approximation of the center of the main cardioid and period bulbs
+const centerY = 0;
+let totalFps = 0;
+let avgFps = 0;
+let lastTime = 0;
+
+function drawMandelbrot() {
+    const now = performance.now();
+    const deltaTime = (now - lastTime) / 1000;
+    lastTime = now;
+    const fps = 1 / deltaTime;
+    fpsElement.textContent = fps.toFixed(1);
+
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${fontSize}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const scaledWidth = canvas.width * scale;
+    const scaledHeight = canvas.height * scale;
+
+    const offsetX = (canvas.width - scaledWidth) / 2;
+    const offsetY = (canvas.height - scaledHeight) / 2;
+
+    for (let x = 0; x < canvas.width; x += fontSize) {
+        for (let y = 0; y < canvas.height; y += fontSize) {
+            const a = (x - offsetX) / scaledWidth * 3.5 - 2.5 + centerX;
+            const b = (y - offsetY) / scaledHeight * 3.5 - 1.75 + centerY;
+            let ca = a;
+            let cb = b;
+
+            let n = 0;
+            for (n = 0; n < maxIterations; n++) {
+                const aa = ca * ca - cb * cb;
+                const bb = 2 * ca * cb;
+                ca = aa + a;
+                cb = bb + b;
+                if (ca * ca + cb * cb > 16) {
+                    break;
+                }
+            }
+
+
+            if (n === maxIterations) continue;  // Skip points within the set (including cardioid)
+            if (a > -0.7 && a < -0.6 && b > -0.1 && b < 0.1) continue;
+
+
+            const colorIndex = Math.floor(n / maxIterations * colors.length);
+            ctx.fillStyle = colors[Math.max(0, Math.min(colorIndex, colors.length - 1))]; //clamp color index
+            const charIndex = n % text.length;  // Use iteration count for character selection
+            ctx.fillText(text[charIndex], x + fontSize / 2, y + fontSize / 2);
+        }
+    }
+
+
+    scale *= 1.005;
+    frame++;
+    frameCountElement.textContent = `${frame}/${maxFrames}`;
+
+    if (frame < maxFrames) {
+        requestAnimationFrame(drawMandelbrot);
+    } else {
+        totalFps = 0;
+        avgFps = 0;
+        frame = 0;
+        scale = 0.5;
+        lastTime = performance.now();
+        requestAnimationFrame(drawMandelbrot);
+    }
+}
+
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+window.addEventListener('resize', resizeCanvas);
+
+requestAnimationFrame(drawMandelbrot);
+</script>
+</body>
+</html>

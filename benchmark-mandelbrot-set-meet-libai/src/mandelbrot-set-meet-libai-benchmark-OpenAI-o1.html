@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Mandelbrot ASCII Animation</title>
+    <style>
+        /* Make the canvas fill the entire screen */
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            /* Black background to highlight the ASCII graphics */
+        }
+
+        #infoPanel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-family: sans-serif;
+            font-size: 14px;
+            color: #000;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandelCanvas"></canvas>
+    <div id="infoPanel">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>CURRENT FRAME: <span id="currentFrame">0</span>/200</div>
+    </div>
+
+    <script>
+        /*
+          This script draws an ASCII-style Mandelbrot Set on a 2D canvas.
+          - Single file, full screen canvas
+          - Each frame, the Mandelbrot is scaled up by 0.5% (zoom factor *= 1.005)
+          - We repeat for 200 frames, then reset
+          - The fill characters come from Li Bai's poem (静夜思), duplicates removed, punctuation excluded,
+            preserving original character order. We then loop over these chars for ASCII rendering.
+          - Interior of the set (interpreted as iteration == maxIteration) is left blank (especially main cardioid + bulbs).
+          - The center is locked around the boundary between main cardioid and the period-2 bulb (approx. c=-0.75, 0).
+          - Font is 8px, placed with an 8px step.
+          - Color set goes from darkest (#0f2350) on the outermost region to lightest (#eaf4fc) closer to the set.
+          - We display FPS, average FPS, and current frame in the top-left corner overlay.
+        */
+
+        // Prepare poem characters (静夜思, remove punctuation, remove duplicates, preserve order)
+        const rawPoem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        let uniquePoemSequence = "";
+        for (let i = 0; i < rawPoem.length; i++) {
+            const ch = rawPoem[i];
+            if (!uniquePoemSequence.includes(ch)) {
+                uniquePoemSequence += ch;
+            }
+        }
+        // uniquePoemSequence now is "床前明月光疑是地上霜举头望低思故乡"
+        // We'll cycle through these characters repeatedly
+        let poemIndex = 0;
+
+        // Define color palette (provided from light to dark). Since we need darkest at outer region,
+        // we will use them in reverse order.
+        const colorPaletteAsc = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde", "#8491c3", "#867ba9", "#68699b",
+            "#706caa", "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c",
+            "#17184b", "#0f2350"
+        ];
+        // Reverse the array to get darkest first
+        const colorPalette = colorPaletteAsc.reverse();
+
+        // Canvas and context
+        const canvas = document.getElementById("mandelCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // Info panel elements
+        const fpsDisplay = document.getElementById("fps");
+        const avgFpsDisplay = document.getElementById("avgFps");
+        const currentFrameDisplay = document.getElementById("currentFrame");
+
+        let width = 0;
+        let height = 0;
+
+        // We consider these for the mandelbrot calculations
+        // Center around -0.75, 0 (boundary of main cardioid and period-2 bulb).
+        let centerX = -0.75;
+        let centerY = 0;
+
+        // Zoom factor: start at 2.0 => means 50% of usual region, because standard region might be ~3.5 in width
+        let zoom = 2.0;
+        const zoomStep = 1.005; // 0.5% increase each frame
+        const maxFrames = 200;
+        let frameCount = 0;
+
+        // For FPS calculation
+        let lastTime = performance.now();
+        let fps = 0;
+        let framesInCurrentCycle = 0;
+        let accumulatedFPS = 0; // sum of fps across cycles – used for average
+        let cycleCount = 0;     // how many times we've completed 200 frames (to recalc avg)
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            width = canvas.width;
+            height = canvas.height;
+        }
+
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+
+        // Helper: Determine the iteration count for a single point in the mandelbrot set
+        function mandelbrotIterations(cx, cy, maxIter) {
+            let x = 0, y = 0;
+            let iteration = 0;
+            const r2 = 4; // Escape radius squared
+            while (x * x + y * y <= r2 && iteration < maxIter) {
+                // z -> z^2 + c
+                let xx = x * x - y * y + cx;
+                let yy = 2 * x * y + cy;
+                x = xx;
+                y = yy;
+                iteration++;
+            }
+            return iteration;
+        }
+
+        // Main draw logic
+        function renderMandelbrot() {
+            ctx.clearRect(0, 0, width, height);
+            // Set font
+            ctx.font = "8px monospace";
+            ctx.textBaseline = "top";
+
+            // We choose a region, typically [-2.5,1.0] in the real axis and [-1.5,1.5] in the imag axis
+            // but let's do [-3.5,3.5] or we can adjust. We'll scale based on `zoom`.
+            const maxIter = 100;
+
+            // Step in 8 px increments for ASCII
+            for (let py = 0; py < height; py += 8) {
+                for (let px = 0; px < width; px += 8) {
+                    // Convert (px, py) to mandelbrot plane
+                    let x0 = centerX + (px - width / 2) / (width / 2) * (3.5 / zoom);
+                    let y0 = centerY + (py - height / 2) / (width / 2) * (2.0 / zoom);
+                    // Some arbitrary ratio to keep aspect near 1:1
+
+                    let iterCount = mandelbrotIterations(x0, y0, maxIter);
+
+                    // If iteration == maxIter => inside set (main cardioid / bulbs etc.), skip (leave blank)
+                    if (iterCount >= maxIter) {
+                        continue;
+                    }
+
+                    // Map iterCount to color index
+                    // We'll clamp or wrap by colorPalette.length
+                    let colorIndex = Math.floor(
+                        iterCount / (maxIter / colorPalette.length)
+                    );
+                    if (colorIndex < 0) colorIndex = 0;
+                    if (colorIndex >= colorPalette.length) {
+                        colorIndex = colorPalette.length - 1;
+                    }
+                    ctx.fillStyle = colorPalette[colorIndex];
+
+                    // Get next poem char
+                    const ch = uniquePoemSequence[poemIndex];
+                    poemIndex = (poemIndex + 1) % uniquePoemSequence.length;
+
+                    // Draw the character
+                    ctx.fillText(ch, px, py);
+                }
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            // Calculate real-time FPS
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            fps = 1000 / delta;
+
+            renderMandelbrot();
+
+            frameCount++;
+            framesInCurrentCycle++;
+
+            // Update overlay
+            fpsDisplay.textContent = fps.toFixed(1);
+            currentFrameDisplay.textContent = frameCount;
+
+            if (frameCount <= maxFrames) {
+                currentFrameDisplay.textContent = frameCount + "/" + maxFrames;
+            } else {
+                currentFrameDisplay.textContent = maxFrames + "/" + maxFrames;
+            }
+
+            // If we finished 200 frames, compute average FPS for this cycle, reset
+            if (frameCount === maxFrames) {
+                // We only sum up FPS for each frame if we want a rough average
+                const avgThisCycle = (framesInCurrentCycle / ((now - (now - delta * framesInCurrentCycle)))) * 1000;
+                /*
+                  Alternatively, we can accumulate each frame's fps, then divide by number of frames:
+                  Let totalFPSInCycle = sum of measured fps each frame
+                  Then let avgCycle = (totalFPSInCycle / 200).
+                  For demonstration, we do a simpler method above. Or we can do the sum approach:
+                */
+                // Approach: sum approach
+                // But we didn't store each frame's fps. We'll implement quickly:
+                // We'll store sum of fps instead:
+                // (We won't rewrite entirely; a typical approach is to have an array or variable to sum them.)
+            }
+
+            // Let's implement summation approach for average FPS:
+            accumulatedFPS += fps; // sum up
+            if (frameCount === maxFrames) {
+                cycleCount++;
+                const averageForThisCycle = accumulatedFPS / maxFrames;
+                avgFpsDisplay.textContent = averageForThisCycle.toFixed(1);
+
+                // Reset for next cycle
+                frameCount = 0;
+                accumulatedFPS = 0;
+                framesInCurrentCycle = 0;
+                poemIndex = 0;
+                zoom = 2.0; // reset zoom
+            } else {
+                // Increase zoom every frame by 0.5%
+                zoom *= zoomStep;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Start
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

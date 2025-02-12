@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #stats {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 5px;
+            font-family: monospace;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="stats">
+        FPS: <span id="fps">0</span><br>
+        AVG FPS: <span id="avgFps">0</span><br>
+        CURRENT FRAME: <span id="frame">0</span>/200
+    </div>
+
+    <script>
+        // 初始化画布
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 李白《静夜思》去重后的字符
+        const poem = [...new Set("床前明月光疑是地上霜举头望山月低头思故乡")].join('');
+
+        // 颜色数组（从浅到深）
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+
+        let scale = Math.min(canvas.width, canvas.height) * 0.5;
+        let frame = 0;
+        let lastTime = performance.now();
+        let fpsValues = [];
+        let currentFps = 0;
+        let avgFps = 0;
+
+        function mandelbrot(x0, y0, maxIter) {
+            let x = 0, y = 0;
+            let iter = 0;
+            while (x * x + y * y < 4 && iter < maxIter) {
+                let xTemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xTemp;
+                iter++;
+            }
+            return iter;
+        }
+
+        function isInMainCardioid(x, y) {
+            const q = (x - 0.25) * (x - 0.25) + y * y;
+            return q * (q + (x - 0.25)) <= 0.25 * y * y ||
+                ((x + 1) * (x + 1) + y * y) <= 0.0625;
+        }
+
+        function render() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const zoom = 1 + frame * 0.005;
+
+            ctx.font = '8px monospace';
+
+            for (let py = 0; py < canvas.height; py += 8) {
+                for (let px = 0; px < canvas.width; px += 8) {
+                    const x = (px - centerX) / scale / zoom + 0.25;
+                    const y = (py - centerY) / scale / zoom;
+
+                    if (!isInMainCardioid(x, y)) {
+                        const iter = mandelbrot(x, y, 100);
+                        if (iter < 100) {
+                            const colorIndex = Math.min(
+                                Math.floor((100 - iter) / 5),
+                                colors.length - 1
+                            );
+                            ctx.fillStyle = colors[colorIndex];
+                            const char = poem[iter % poem.length];
+                            ctx.fillText(char, px, py);
+                        }
+                    }
+                }
+            }
+
+            // 更新统计信息
+            const now = performance.now();
+            const deltaTime = now - lastTime;
+            currentFps = Math.round(1000 / deltaTime);
+            fpsValues.push(currentFps);
+
+            if (frame === 199) {
+                avgFps = Math.round(
+                    fpsValues.reduce((a, b) => a + b) / fpsValues.length
+                );
+                fpsValues = [];
+            }
+
+            document.getElementById('fps').textContent = currentFps;
+            document.getElementById('avgFps').textContent = avgFps;
+            document.getElementById('frame').textContent = frame;
+
+            lastTime = now;
+            frame = (frame + 1) % 200;
+
+            requestAnimationFrame(render);
+        }
+
+        // 启动动画
+        render();
+
+        // 响应窗口大小变化
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            scale = Math.min(canvas.width, canvas.height) * 0.5;
+        });
+    </script>
+</body>
+
+</html>

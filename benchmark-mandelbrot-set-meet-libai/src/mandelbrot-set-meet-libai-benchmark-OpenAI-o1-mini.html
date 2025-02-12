@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        #mandelbrotCanvas {
+            display: block;
+        }
+
+        #fpsIndicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+            padding: 5px 10px;
+            color: #000;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+
+        #fpsIndicator span {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <div id="fpsIndicator">
+        <span id="fps">FPS: --</span>
+        <span id="avgFps">AVG FPS: --</span>
+        <span id="currentFrame">CURRENT FRAME: 0/200</span>
+    </div>
+    <script>
+        // Initialize canvas and context
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            center = { x: canvas.width / 2, y: canvas.height / 2 };
+        });
+
+        // Li Bai's "静夜思" poem
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const uniqueChars = [...new Set(poem.replace(/[^A-Za-z\u4e00-\u9fa5]/g, ''))].join('');
+        let charIndex = 0;
+
+        // Color palette from light to dark
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+
+        // FPS Indicators
+        const fpsElement = document.getElementById('fps');
+        const avgFpsElement = document.getElementById('avgFps');
+        const currentFrameElement = document.getElementById('currentFrame');
+
+        let frameCount = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let lastTime = performance.now();
+        let fpsHistory = [];
+
+        // Mandelbrot parameters
+        let scale = 1;
+        const maxFrames = 200;
+        let currentFrame = 0;
+
+        const center = { x: canvas.width / 2, y: canvas.height / 2 };
+
+        // Calculate Mandelbrot set
+        function drawMandelbrot() {
+            const imgData = ctx.createImageData(canvas.width, canvas.height);
+            const data = imgData.data;
+
+            const width = canvas.width;
+            const height = canvas.height;
+
+            const magnificationFactor = scale;
+            const panX = center.x - (width / 2) / magnificationFactor;
+            const panY = center.y - (height / 2) / magnificationFactor;
+
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    let zx = 1.5 * (x - center.x) / (0.5 * magnificationFactor * width);
+                    let zy = (y - center.y) / (0.5 * magnificationFactor * height);
+                    let cX = zx;
+                    let cY = zy;
+                    let iter = 0;
+                    const maxIter = 20;
+
+                    while (zx * zx + zy * zy < 4 && iter < maxIter) {
+                        let tmp = zx * zx - zy * zy + cX;
+                        zy = 2.0 * zx * zy + cY;
+                        zx = tmp;
+                        iter++;
+                    }
+
+                    const pixelIndex = (y * width + x) * 4;
+                    const colorIndex = Math.min(iter, colors.length - 1);
+                    const color = hexToRgb(colors[colors.length - 1 - colorIndex]);
+
+                    data[pixelIndex] = color.r;
+                    data[pixelIndex + 1] = color.g;
+                    data[pixelIndex + 2] = color.b;
+                    data[pixelIndex + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        // Convert hex to RGB
+        function hexToRgb(hex) {
+            const bigint = parseInt(hex.slice(1), 16);
+            const r = (bigint >> 16) & 255;
+            const g = (bigint >> 8) & 255;
+            const b = bigint & 255;
+            return { r, g, b };
+        }
+
+        // Render ASCII characters
+        function renderASCII() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawMandelbrot();
+
+            ctx.font = '8px monospace';
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+
+            const cols = Math.floor(canvas.width / 8);
+            const rows = Math.floor(canvas.height / 8);
+
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const char = uniqueChars[charIndex % uniqueChars.length];
+                    charIndex++;
+                    ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                    ctx.fillText(char, i * 8, j * 8);
+                }
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            const now = performance.now();
+            const delta = now - lastTime;
+            fps = 1000 / delta;
+            fpsHistory.push(fps);
+            if (fpsHistory.length > maxFrames) fpsHistory.shift();
+            avgFps = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+            lastTime = now;
+
+            frameCount++;
+            currentFrame = (currentFrame + 1) % maxFrames;
+
+            scale *= 1.005; // 0.5% zoom per frame
+
+            if (currentFrame === 0) {
+                scale = 1;
+            }
+
+            renderASCII();
+
+            fpsElement.textContent = `FPS: ${fps.toFixed(2)}`;
+            avgFpsElement.textContent = `AVG FPS: ${avgFps.toFixed(2)}`;
+            currentFrameElement.textContent = `CURRENT FRAME: ${currentFrame}/${maxFrames}`;
+
+            requestAnimationFrame(animate);
+        }
+
+        // Start animation
+        animate();
+    </script>
+</body>
+
+</html>

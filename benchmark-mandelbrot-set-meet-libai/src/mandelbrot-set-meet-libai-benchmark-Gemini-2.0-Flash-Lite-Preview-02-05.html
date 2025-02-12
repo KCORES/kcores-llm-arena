@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            /* 隐藏滚动条 */
+            background-color: black;
+            /* 黑色背景 */
+        }
+
+        #canvas {
+            display: block;
+            /* 确保 Canvas 占据整个屏幕 */
+        }
+
+        #fps-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            color: black;
+            font-family: monospace;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 10;
+            /* 确保在 Canvas 上方 */
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps-info">
+        FPS: <span id="fps">0</span><br>
+        AVG FPS: <span id="avg-fps">0</span><br>
+        CURRENT FRAME: <span id="current-frame">0/200</span>
+    </div>
+
+    <script>
+        // 获取 Canvas 元素
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsElement = document.getElementById('fps');
+        const avgFpsElement = document.getElementById('avg-fps');
+        const currentFrameElement = document.getElementById('current-frame');
+
+        // 全屏设置
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mandelbrot 参数
+        const maxIterations = 50; // 减少迭代次数以提高性能
+        const charSize = 8; // 字符大小
+        const charWidth = charSize; // 字符宽度 (等于 charSize，无间距)
+        const charHeight = charSize; // 字符高度 (等于 charSize，无间距)
+        const centerX = 0; // 中心点
+        const centerY = 0; // 中心点
+        let scale = 2.0; // 初始缩放比例
+        const scaleFactor = 0.005; // 每次放大比例
+        const startScale = 2.0; // 重置时的初始缩放
+        const initialSizeFactor = 0.5; // 初始大小为屏幕的 50%
+
+        // 颜色映射
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde',
+            '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398',
+            '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c',
+            '#17184b', '#0f2350'
+        ];
+
+        // 获取李白的《静夜思》字符并去重
+        const poem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+        const poemChars = [...new Set(poem.replace(/[^一-龥a-zA-Z0-9]/g, '').split(''))]; // 移除标点符号，保留原有顺序
+        const poemCharsLength = poemChars.length;
+        let charIndex = 0;
+
+        // FPS 统计
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let totalFrames = 0;
+
+        // 渲染帧数
+        let currentFrame = 0;
+        const totalFramesToRender = 200;
+
+        // Mandelbrot 计算函数
+        function calculateMandelbrot(x0, y0) {
+            let x = 0;
+            let y = 0;
+            let iteration = 0;
+
+            while (x * x + y * y <= 4 && iteration < maxIterations) {
+                const xTemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xTemp;
+                iteration++;
+            }
+            return iteration;
+        }
+
+
+        function drawMandelbrot() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const size = Math.min(width, height) * initialSizeFactor * scale; // 根据scale计算大小
+
+            // 计算绘制区域的起始坐标，使中心点在 Main cardioid and period bulbs 的交界处
+            const startX = width / 2 - size / 2;
+            const startY = height / 2 - size / 2;
+
+            // 循环绘制 Mandelbrot
+            for (let y = 0; y < size; y += charHeight) {
+                for (let x = 0; x < size; x += charWidth) {
+                    const x0 = (x - size / 2) * 4 / size * scale * 1.0; // 调整坐标映射，scale影响缩放
+                    const y0 = (y - size / 2) * 4 / size * scale * 1.0;
+                    const iteration = calculateMandelbrot(x0 * scale, y0 * scale); // 调整scale
+
+                    let colorIndex = Math.floor(iteration / maxIterations * colors.length);
+                    if (colorIndex >= colors.length) {
+                        colorIndex = colors.length - 1;
+                    }
+
+                    const char = poemChars[charIndex % poemCharsLength];
+
+                    // 绘制字符
+                    ctx.fillStyle = colors[colorIndex];
+                    ctx.font = '8px monospace'; // 设置字体
+                    ctx.textBaseline = 'top';
+                    ctx.fillText(char, startX + x, startY + y);
+                    charIndex++;
+                }
+            }
+        }
+
+        // 动画循环
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+
+            // FPS 计算
+            frameCount++;
+            if (deltaTime > 1000) { // 1 second
+                fps = Math.round(frameCount / (deltaTime / 1000));
+                frameCount = 0;
+            }
+            fpsElement.textContent = fps;
+
+
+            // 清除画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制 Mandelbrot
+            drawMandelbrot();
+
+            // 更新当前帧
+            currentFrame++;
+            currentFrameElement.textContent = `${currentFrame}/${totalFramesToRender}`;
+
+            // 缩放并循环
+            scale += scaleFactor;
+            if (currentFrame >= totalFramesToRender) {
+                totalFrames += totalFramesToRender;
+                avgFps = Math.round(totalFrames / (currentTime / 1000)); // 计算平均FPS
+                avgFpsElement.textContent = avgFps;
+                scale = startScale; // 重置缩放
+                currentFrame = 0;
+            }
+        }
+
+        // 开始动画
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

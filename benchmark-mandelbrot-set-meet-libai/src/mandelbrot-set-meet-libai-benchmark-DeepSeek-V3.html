@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mandelbrot Animation</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+        canvas {
+            display: block;
+        }
+        .stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="stats">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avg-fps">0</span></div>
+        <div>CURRENT FRAME: <span id="current-frame">0</span>/200</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const stats = {
+            fps: document.getElementById('fps'),
+            avgFps: document.getElementById('avg-fps'),
+            currentFrame: document.getElementById('current-frame')
+        };
+
+        // Constants
+        const MAX_ITER = 200;
+        const ZOOM_FACTOR = 1.005;
+        const FRAME_COUNT = 200;
+        const FONT_SIZE = 8;
+        const POEM = "床前明月光疑是地上霜举头望明月低头思故乡".split('');
+        const COLORS = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ].reverse();
+
+        // Animation state
+        let frame = 0;
+        let zoom = 1;
+        let fpsHistory = [];
+        let lastTime = performance.now();
+
+        function drawMandelbrot() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const aspectRatio = width / height;
+            const scale = Math.min(width, height) * 0.5 * zoom;
+
+            for (let py = 0; py < height; py += FONT_SIZE) {
+                for (let px = 0; px < width; px += FONT_SIZE) {
+                    const x0 = (px - width / 2) / scale;
+                    const y0 = (py - height / 2) / scale;
+                    let x = 0, y = 0, iter = 0;
+
+                    while (x * x + y * y <= 4 && iter < MAX_ITER) {
+                        const xtemp = x * x - y * y + x0;
+                        y = 2 * x * y + y0;
+                        x = xtemp;
+                        iter++;
+                    }
+
+                    if (iter >= MAX_ITER) continue;
+
+                    const colorIndex = Math.floor((iter / MAX_ITER) * (COLORS.length - 1));
+                    const charIndex = iter % POEM.length;
+                    ctx.fillStyle = COLORS[colorIndex];
+                    ctx.fillText(POEM[charIndex], px, py + FONT_SIZE);
+                }
+            }
+        }
+
+        function animate() {
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            const currentFps = Math.round(1000 / delta);
+            fpsHistory.push(currentFps);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawMandelbrot();
+
+            stats.fps.textContent = currentFps;
+            stats.currentFrame.textContent = `${frame + 1}/${FRAME_COUNT}`;
+
+            if (++frame >= FRAME_COUNT) {
+                const avgFps = Math.round(fpsHistory.reduce((a, b) => a + b) / fpsHistory.length);
+                stats.avgFps.textContent = avgFps;
+                frame = 0;
+                zoom = 1;
+                fpsHistory = [];
+            } else {
+                zoom *= ZOOM_FACTOR;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            ctx.font = `${FONT_SIZE}px monospace`;
+            ctx.textBaseline = 'top';
+            animate();
+        }
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        init();
+    </script>
+</body>
+</html>

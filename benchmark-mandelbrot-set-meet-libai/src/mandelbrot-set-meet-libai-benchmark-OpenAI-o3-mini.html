@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        /* Fullscreen canvas and reset margins */
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        // Global constants and settings
+        const cellSize = 8; // each ASCII character is rendered within 8x8 pixels
+
+        // Candidate ASCII characters from Li Bai's "静夜思" after deduplication and removing punctuation
+        const candidateCharacters = ["床", "前", "明", "月", "光", "疑", "是", "地", "上", "霜", "举", "头", "望", "低", "思", "故", "乡"];
+
+        // Candidate colors ordered from light to dark (浅→深)
+        const candidateColors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6",
+            "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+            "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073",
+            "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ];
+
+        const maxIter = 50;              // Maximum iterations for Mandelbrot calculation.
+        const numWorkers = 8;            // Number of Web Workers (threads) to use.
+        let workers = [];                // Array to hold worker instances.
+
+        // Initial view settings: center at (-0.75, 0) with width 3.5 (covers standard Mandelbrot range)
+        const initialViewWidth = 3.5;
+        let currentViewWidth = initialViewWidth;
+
+        // Variables for FPS calculation and frame count
+        let frameCount = 0;
+        let fpsSum = 0;
+        let avgFPS = 0;
+        let lastFrameTime = performance.now();
+
+        // Get canvas and context; set text baseline and font
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        ctx.textBaseline = "top";
+        ctx.font = cellSize + "px monospace";
+
+        // Resize canvas to full window size
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+
+        //////////////////////////////////////////////////////////////////////
+        // Worker code string – this code runs in each worker thread.
+        //////////////////////////////////////////////////////////////////////
+        const workerCode = `
+    // Worker: compute a block of rows for the ASCII Mandelbrot render.
+    self.onmessage = function(e) {
+      const data = e.data;
+      const { startRow, endRow, cols, totalRows, viewWidth, center, maxIter, candidateCharCount, candidateColorCount } = data;
+      let results = [];
+      // Calculate the mapping scale from cell coordinate to complex coordinate.
+      const scale = viewWidth / cols;
+      for (let row = startRow; row < endRow; row++) {
+        for (let col = 0; col < cols; col++) {
+          // Compute the complex coordinate for the center of the cell.
+          let x = center.re + (col + 0.5 - cols / 2) * scale;
+          let y = center.im + (row + 0.5 - totalRows / 2) * scale;
+          
+          // Test if (x,y) lies in the main cardioid.
+          let dx = x - 0.25;
+          let q = dx * dx + y * y;
+          if (q * (q + dx) < 0.25 * y * y) {
+            // Skip drawing (leave blank)
+            results.push(-1, -1);
+            continue;
+          }
+          // Test if (x,y) is in the period-2 bulb.
+          if (((x + 1) * (x + 1) + y * y) < 0.0625) { // 0.0625 = 1/16
+            results.push(-1, -1);
+            continue;
+          }
+
+          // Mandelbrot iteration
+          let zx = 0, zy = 0, iteration = 0;
+          while (zx*zx + zy*zy <= 4 && iteration < maxIter) {
+            let xtemp = zx * zx - zy * zy + x;
+            zy = 2 * zx * zy + y;
+            zx = xtemp;
+            iteration++;
+          }
+          // If point did not escape, we consider it inside and leave blank.
+          if (iteration >= maxIter) {
+            results.push(-1, -1);
+          } else {
+            // Determine candidate character and its color.
+            let charIndex = iteration % candidateCharCount;
+            // Map escape iteration to color index:
+            // Outer (escape quickly) gets darkest color (last element); inner gets lighter.
+            let colorIndex = Math.floor(((maxIter - iteration) / maxIter) * (candidateColorCount - 1));
+            results.push(charIndex, colorIndex);
+          }
+        }
+      }
+      // Post the result back with starting row information.
+      self.postMessage({ startRow: startRow, results: results });
+    };
+    `;
+
+        //////////////////////////////////////////////////////////////////////
+        // Initialize all worker threads.
+        //////////////////////////////////////////////////////////////////////
+        function initWorkers() {
+            // Create a blob URL for the worker code.
+            const blob = new Blob([workerCode], { type: "application/javascript" });
+            const blobURL = URL.createObjectURL(blob);
+            for (let i = 0; i < numWorkers; i++) {
+                workers.push(new Worker(blobURL));
+            }
+        }
+
+        //////////////////////////////////////////////////////////////////////
+        // Utility function: draw a rounded rectangle.
+        //////////////////////////////////////////////////////////////////////
+        function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+            if (typeof stroke === 'undefined') { stroke = true; }
+            if (typeof radius === 'undefined') { radius = 5; }
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+            if (fill) { ctx.fill(); }
+            if (stroke) { ctx.stroke(); }
+        }
+
+        //////////////////////////////////////////////////////////////////////
+        // Draw overlay info in the top-left corner.
+        //////////////////////////////////////////////////////////////////////
+        function drawOverlay(currentFPS, avgFPS, currentFrame) {
+            const overlayLines = [
+                "FPS: " + currentFPS.toFixed(1),
+                "AVG FPS: " + avgFPS.toFixed(1),
+                "CURRENT FRAME: " + currentFrame + "/200"
+            ];
+            const lineHeight = 14;
+            const padding = 5;
+            const overlayWidth = 120; // Fixed width for overlay
+            const overlayHeight = overlayLines.length * lineHeight + padding * 2;
+            const x = 10, y = 10, radius = 5;
+            // Draw semi-transparent white rounded rectangle
+            ctx.fillStyle = "rgba(255,255,255,0.6)";
+            roundRect(ctx, x, y, overlayWidth, overlayHeight, radius, true, false);
+            // Draw text in black
+            ctx.fillStyle = "black";
+            ctx.font = "12px sans-serif";
+            for (let i = 0; i < overlayLines.length; i++) {
+                ctx.fillText(overlayLines[i], x + padding, y + padding + i * lineHeight);
+            }
+            // Restore main cell font and text baseline
+            ctx.font = cellSize + "px monospace";
+            ctx.textBaseline = "top";
+        }
+
+        //////////////////////////////////////////////////////////////////////
+        // Main animation loop.
+        //////////////////////////////////////////////////////////////////////
+        async function renderFrame() {
+            // Compute FPS for current frame.
+            const now = performance.now();
+            const delta = now - lastFrameTime;
+            const currentFPS = 1000 / delta;
+            lastFrameTime = now;
+            fpsSum += currentFPS;
+            frameCount++;
+
+            // The fractal is drawn in a square region with pixel size equal to 50% of the shorter side.
+            const fractalSizePx = 0.5 * Math.min(canvas.width, canvas.height);
+            const gridSize = Math.floor(fractalSizePx / cellSize); // number of cells in each dimension
+            const offsetX = (canvas.width - fractalSizePx) / 2;
+            const offsetY = (canvas.height - fractalSizePx) / 2;
+
+            // Partition the grid's rows among workers.
+            const rowsPerWorker = Math.floor(gridSize / numWorkers);
+            let promises = [];
+            let startRow = 0;
+            for (let i = 0; i < numWorkers; i++) {
+                let endRow = (i === numWorkers - 1) ? gridSize : startRow + rowsPerWorker;
+                const worker = workers[i];
+                // Wrap worker response into a promise.
+                const p = new Promise(resolve => {
+                    worker.onmessage = function (e) {
+                        resolve(e.data);
+                    };
+                    // Post message with all parameters needed for computing this block.
+                    worker.postMessage({
+                        startRow: startRow,
+                        endRow: endRow,
+                        cols: gridSize,
+                        totalRows: gridSize,
+                        viewWidth: currentViewWidth,
+                        center: { re: -0.75, im: 0 },
+                        maxIter: maxIter,
+                        candidateCharCount: candidateCharacters.length,
+                        candidateColorCount: candidateColors.length
+                    });
+                });
+                promises.push(p);
+                startRow = endRow;
+            }
+
+            // Await the computation results from all workers.
+            const workerResults = await Promise.all(promises);
+            // Prepare a grid result (2D array) for drawing.
+            let gridResults = new Array(gridSize);
+            workerResults.forEach(data => {
+                let r = data.startRow;
+                const res = data.results;  // Flat array of length (numRows * gridSize * 2)
+                const numRows = res.length / (gridSize * 2);
+                for (let i = 0; i < numRows; i++) {
+                    let rowArr = [];
+                    for (let j = 0; j < gridSize; j++) {
+                        const index = (i * gridSize + j) * 2;
+                        rowArr.push({ charIndex: res[index], colorIndex: res[index + 1] });
+                    }
+                    gridResults[r + i] = rowArr;
+                }
+            });
+
+            // Clear the canvas.
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Render the ASCII grid.
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    const cell = gridResults[i][j];
+                    if (cell.charIndex !== -1) {
+                        ctx.fillStyle = candidateColors[cell.colorIndex];
+                        ctx.fillText(candidateCharacters[cell.charIndex], offsetX + j * cellSize, offsetY + i * cellSize);
+                    }
+                }
+            }
+
+            // Draw overlay: current FPS, average FPS and current frame count.
+            drawOverlay(currentFPS, fpsSum / frameCount, frameCount);
+
+            // Update zoom factor: each frame zoom in by 0.5%.
+            currentViewWidth *= 0.995;
+
+            // After 200 frames, reset the animation.
+            if (frameCount >= 200) {
+                avgFPS = fpsSum / frameCount;
+                currentViewWidth = initialViewWidth;
+                fpsSum = 0;
+                frameCount = 0;
+            }
+
+            // Schedule next frame.
+            requestAnimationFrame(renderFrame);
+        }
+
+        //////////////////////////////////////////////////////////////////////
+        // Initialize workers and start animation.
+        //////////////////////////////////////////////////////////////////////
+        initWorkers();
+        requestAnimationFrame(renderFrame);
+    </script>
+</body>
+
+</html>

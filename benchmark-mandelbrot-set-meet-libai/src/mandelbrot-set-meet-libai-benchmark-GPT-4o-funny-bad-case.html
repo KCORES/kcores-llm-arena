@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 5px;
+            padding: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="info">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>CURRENT FRAME: <span id="currentFrame">0</span>/200</div>
+    </div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width = window.innerWidth;
+        const height = canvas.height = window.innerHeight;
+        const maxIterations = 200;
+        const scaleFactor = 1.005;
+        const colors = ['#0f2350', '#17184b', '#1c305c', '#192f60', '#223a70', '#2a4073', '#274a78', '#4a488e', '#4d4398', '#5654a2', '#706caa', '#68699b', '#867ba9', '#8491c3', '#bbbcde', '#bbc8e6', '#ebf6f7', '#e8ecef', '#eaedf7', '#eaf4fc'];
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        let uniqueChars = Array.from(new Set(poem.replace(/[^\w]/g, '')));
+        let frame = 0;
+        let fps, avgFps, lastTime = 0, frameCount = 0, totalFps = 0;
+
+        function drawMandelbrot() {
+            ctx.clearRect(0, 0, width, height);
+            let scale = Math.pow(scaleFactor, frame);
+            let offsetX = width / 2;
+            let offsetY = height / 2;
+            let charIndex = 0;
+
+            for (let x = 0; x < width; x += 8) {
+                for (let y = 0; y < height; y += 8) {
+                    let zx = (x - offsetX) / (0.5 * scale * width);
+                    let zy = (y - offsetY) / (0.5 * scale * height);
+                    let i = maxIterations;
+                    while (zx * zx + zy * zy < 4 && i > 0) {
+                        let tmp = zx * zx - zy * zy + 0.355534;
+                        zy = 2.0 * zx * zy + 0.337292;
+                        zx = tmp;
+                        i--;
+                    }
+                    if (i > 0) {
+                        ctx.fillStyle = colors[i % colors.length];
+                        ctx.fillText(uniqueChars[charIndex % uniqueChars.length], x, y);
+                        charIndex++;
+                    }
+                }
+            }
+        }
+
+        function update() {
+            let now = performance.now();
+            fps = 1000 / (now - lastTime);
+            lastTime = now;
+            totalFps += fps;
+            frameCount++;
+            avgFps = totalFps / frameCount;
+
+            document.getElementById('fps').textContent = fps.toFixed(2);
+            document.getElementById('avgFps').textContent = avgFps.toFixed(2);
+            document.getElementById('currentFrame').textContent = frame;
+
+            drawMandelbrot();
+            frame = (frame + 1) % maxIterations;
+            requestAnimationFrame(update);
+        }
+
+        update();
+    </script>
+</body>
+
+</html>

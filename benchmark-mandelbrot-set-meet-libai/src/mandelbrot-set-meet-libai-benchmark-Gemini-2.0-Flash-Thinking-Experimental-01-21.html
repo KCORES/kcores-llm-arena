@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Mandelbrot Set Animation</title>
+<style>
+  body { margin: 0; overflow: hidden; background-color: #000; }
+  canvas { display: block; }
+  #fps-indicator {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background-color: rgba(255, 255, 255, 0.5);
+    color: black;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+<canvas id="mandelbrotCanvas"></canvas>
+<div id="fps-indicator">
+  FPS: <span id="current-fps">--</span><br>
+  AVG FPS: <span id="avg-fps">--</span><br>
+  CURRENT FRAME: <span id="frame-count">0/200</span>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const canvas = document.getElementById('mandelbrotCanvas');
+  const ctx = canvas.getContext('2d');
+  const fpsIndicator = document.getElementById('fps-indicator');
+  const currentFpsSpan = document.getElementById('current-fps');
+  const avgFpsSpan = document.getElementById('avg-fps');
+  const frameCountSpan = document.getElementById('frame-count');
+
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const poem = "静夜思床前明月光疑是地上霜举头望明月低头思故乡";
+  const uniqueChars = [...new Set(poem)].filter(char => char.trim() !== "");
+  const characters = uniqueChars;
+
+  const colors = [
+    "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+    "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+  ].reverse(); // Reverse for outer to inner color
+
+  const gridSize = 8;
+  const maxIterations = 200;
+  let zoom = 1;
+  let frame = 0;
+  let animationFrameId;
+  let lastFrameTime = 0;
+  let currentFps = 0;
+  let avgFps = 0;
+  let totalFrames = 0;
+  let totalElapsedTime = 0;
+
+  const centerX = -0.75; // Center of Main cardioid and period bulbs intersection
+  const centerY = 0;
+
+  function calculateMandelbrot(x, y) {
+    let zx = 0.0;
+    let zy = 0.0;
+    let iteration = 0;
+    while (zx * zx + zy * zy < 4.0 && iteration < maxIterations) {
+      let tempZx = zx * zx - zy * zy + x;
+      zy = 2.0 * zx * zy + y;
+      zx = tempZx;
+      iteration++;
+    }
+    return iteration;
+  }
+
+  function renderMandelbrot() {
+    const width = canvas.width;
+    const height = canvas.height;
+    const initialSize = Math.min(width, height) * 0.5;
+    const currentSize = initialSize * zoom;
+
+    const scale = currentSize / 4; // Mandelbrot set range is approx -2 to 2
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.font = `${gridSize}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let row = 0; row < height / gridSize; row++) {
+      for (let col = 0; col < width / gridSize; col++) {
+        const px = col * gridSize;
+        const py = row * gridSize;
+
+        const mandelbrotX = (px - width / 2) / scale + centerX;
+        const mandelbrotY = (py - height / 2) / scale + centerY;
+
+        const iterations = calculateMandelbrot(mandelbrotX, mandelbrotY);
+
+        let charIndex = iterations % characters.length;
+        let colorIndex = Math.floor(iterations / (maxIterations / colors.length)) -1;
+
+        if (iterations >= maxIterations) {
+          colorIndex = colors.length -1; // Max color for outside
+          charIndex = (frame % characters.length); // Cycle characters outside
+        } else if (iterations < 10) { // Approximate Main cardioid and period bulbs
+          ctx.fillStyle = colors[0]; // Lightest color, effectively empty
+          ctx.fillText(" ", px + gridSize / 2, py + gridSize / 2);
+          continue; // Skip drawing character for cardioid/bulbs
+        }
+
+
+        if (colorIndex < 0) colorIndex = 0;
+        if (colorIndex >= colors.length) colorIndex = colors.length - 1;
+
+        ctx.fillStyle = colors[colorIndex];
+        const charToDraw = characters[charIndex % characters.length];
+        ctx.fillText(charToDraw, px + gridSize / 2, py + gridSize / 2);
+      }
+    }
+  }
+
+  function updateFPS() {
+    const now = performance.now();
+    const deltaTime = now - lastFrameTime;
+    lastFrameTime = now;
+    currentFps = Math.round(1000 / deltaTime);
+
+    totalFrames++;
+    totalElapsedTime += deltaTime;
+    avgFps = Math.round(1000 * totalFrames / totalElapsedTime);
+
+    currentFpsSpan.textContent = currentFps;
+    avgFpsSpan.textContent = isNaN(avgFps) ? "--" : avgFps; // Handle NaN for first frame
+    frameCountSpan.textContent = `${frame}/${200}`;
+  }
+
+
+  function animate() {
+    updateFPS();
+    renderMandelbrot();
+
+    frame++;
+    zoom += 0.005; // 0.5% zoom per frame
+
+    if (frame <= 200) {
+      animationFrameId = requestAnimationFrame(animate);
+    } else {
+      frame = 0;
+      zoom = 1;
+      totalFrames = 0;
+      totalElapsedTime = 0;
+      avgFps = 0;
+      frameCountSpan.textContent = `${frame}/${200}`;
+      animationFrameId = requestAnimationFrame(animate); // Reset and loop
+    }
+  }
+
+  animate();
+});
+</script>
+
+</body>
+</html>
