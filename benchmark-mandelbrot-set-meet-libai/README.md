@@ -73,9 +73,37 @@ Mandelbrot Set Meet LiBai 测试
 | Gemini-2.0-Pro-Experimental-02-05 | 5 | 5 | 5 | 3 (过小, 且比例不等, 但能看到 period-3 bulb) | 4 (过小, 但能看到period-3 bulb) | 0 (应该放大, 但是动画是缩小) | 5 | 5 | 5 | 4 (并未保留顺序) | 5 | 0 (画面中心不在交界处) | 5  | 5 | 5| 5 | 5 | 71 | 
 | OpenAI-o1-mini | | | | | | | | | | | | | | | | | | 0 (虽然也展示了文字, 但文字叠在了Mandelbrot Set上方, 并不符合需求, 但这个demo挺好看的) | 
 | OpenAI-o1 | 5 | 5 | 5 | 4 (长宽比例不等)   | 2 (过大, 只能看不完整的 Main cardioid 和 period-2 bulb) | 5 | 5 | 5 |5  | 5 | 5| 5| 5 | 5 | 3 (CURRENT FRAME 数值展示多了个/200) | 5 | 8 (-10, 过大, 但能看到完整的 period-2 bulb) | 82 | 
-| OpenAI-o3-mini | 5 | 0 (没有全屏展示动画) | 5 | 5 | 4 (过小, 但能看到period-3 bulb)  | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 |  3 (宽度不够) | 5 (-25, 最外部没有使用文本渲染) | 82 | 
+| OpenAI-o3-mini | 5 | 0 (没有全屏展示动画) | 5 | 5 | 4 (过小, 但能看到period-3 bulb)  | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 |  3 (宽度不够) | 5 (-25, 最外部没有使用文本渲染) | 77 | 
 | claude-3-opus |  | | | | | | | | | | | | | | | | | 0 (不是ASCII风格的Mandelbrot Set) | 
 | claude-3.5-sonnet | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (书写不正确) | 5 (Set 在浏览器实际实践中保证了顺序) | 5 | 0 (画面中心不在交界处) | 5 | 5 | 5 | 5 | 13 | 86 | 
+
+
+
+
+## 可视化结果
+
+- 整体结果, FPS 数据占比较大, 体现了模型的代码优化水平
+
+![](./assets/images/llm_benchmark_results.png)
+
+- 不包含 FPS 数据结果, 体现了 LLM 在需求还原上的表现
+
+![](./assets/images/llm_benchmark_results_no_fps.png)
+
+
+
+## 结论
+
+- 从目视来讲, 效果最好的是 DeepSeek-R1 和 OpenAI-o1. 其中 DeepSeek-R1 的代码优化水平最高, 而 OpenAI-o1 的需求还原能力最高. 
+- 两种统计方式中, claude-3.5-sonnet 稳坐第二名, 从实际目视来讲, claude-3.5-sonnet 也的确给出了很不错的效果 (除了没有居中转世动画和唐诗能力不太行以外, 其他表现均不错). 
+- 代码质量上, OpenAI-o1 当之无愧是第一名, 达到了一流开源软件的代码质量.
+- Gemini 综合质量垫底, 新出的 02-05 版本甚至没有 Gemini-2.0-Flash 和 Gemini-2.0-Flash-Thinking-Experimental-01-21 表现好.
+
+
+
+
+
+
 
 
 
