@@ -1,6 +1,11 @@
 Mandelbrot Set Meet LiBai 测试
 ------------------------------
 
+## Desc
+
+本测试使用800字+的prompt, 设置需求点16个, 并且包含了性能优化. 需求有针对领域编程(canvas动画), 有针字符串对排序, 去重, 过滤, 有针对数学(Mandelbrot Set 的计算), 有针对文本(李白的诗)的综合要求.
+
+较好的体现了现实世界中复杂需求的场景.
 
 ## 测试 Prompt
 
@@ -33,7 +38,7 @@ Mandelbrot Set Meet LiBai 测试
 ## 评分规则
 
 测试 Prompt 每个 LLM 运行 3 次，取质量最好的一次。如果 3 次均运行失败则直接得 0 分。总计110分满分。
-评分时2K分辨率全屏展示并人工目视评分。
+评分时使用 2K 分辨率全屏展示并人工目视评分。
 
 
 | 序号 | 采分点 | 得分规则 | 
@@ -42,7 +47,7 @@ Mandelbrot Set Meet LiBai 测试
 | 2 | 全屏展示动画 | 全屏展示动画得5分, 否则得0分 |
 | 3 | 所有代码放在同一个HTML文件里面 | 所有代码放在同一个HTML文件里面得5分, 否则得0分 |
 | 4 | Mandelbrot Set 图形美观度(不涉及大小问题) | 满分5分，长宽比例相等得1分,  Main cardioid 展示清晰得 1分,  能看到 period-2 bulb 得1分，能看到 period-3 bulb 得1分，能看到 period-4 bulb 得1分 |
-| 5 | Mandelbrot Set 的主要图形大小 | Mandelbrot Set 的主要图形初始大小为屏幕的50%得5分, 过大但能看到 period-3 bulb得4分，过大但只能看完整到 Main cardioid 和 period-2 bulb得3分，过大但只能看不完整的 Main cardioid 和 period-2 bulb得2分，只能看到部分 Main cardioid 得1分，其它不得分，过小同理 |
+| 5 | Mandelbrot Set 的主要图形大小 | Mandelbrot Set 的主要图形初始大小约为屏幕的50%得5分, 过大但能看到 period-3 bulb得4分，过大但只能看完整到 Main cardioid 和 period-2 bulb得3分，过大但只能看不完整的 Main cardioid 和 period-2 bulb得2分，只能看到部分 Main cardioid 得1分，其它不得分，过小同理 |
 | 6 | Mandelbrot Set 的主要图形每渲染一次每帧放大 0.5% | Mandelbrot Set 的主要图形每渲染一次每帧放大 0.5%得5分, 不满足0.5%但是是放大得3分， 否则得0分 |
 | 7 | 总计渲染200次 | 总计渲染200次得5分, 否则得0分 |
 | 8 | 总计渲染200次后重置并循环 | 总计渲染200次后重置并循环得5分, 只重置或只循环得3分, 都不满足得0分 |
@@ -56,7 +61,7 @@ Mandelbrot Set Meet LiBai 测试
 | 16 | 指示器样式 | 指示器样式全部满足得5分，样式不正确得3分，全不符合得0分 |
 | 17 | 平均FPS水平 | 总分30分，平均FPS大于等于30FPS得满分，否则分数为平均FPS的数值，四舍五入, 注意, 如果最外围不使用文字渲染, 会极大提升帧率, 因此最外围不使用文字渲染扣掉25分. 如果图形过大(只能看到部分Main cardioid, 但仍然可以看到完整的 period-2 bulb), 则扣掉10分, 如果图形过大(且看不到完整的 period-2 bulb), 则扣掉15分 |
 
-* 注意, 如果不是 ASCII 风格的 Mandelbrot Set, 则被判为无法完成测试, 直接得 0 分
+* 注意, 如果不是 ASCII 风格的 Mandelbrot Set, 或无任何图像, 则被判为无法完成测试, 直接得 0 分
 
 
 ## 测试结果
@@ -76,6 +81,7 @@ Mandelbrot Set Meet LiBai 测试
 | OpenAI-o3-mini | 5 | 0 (没有全屏展示动画) | 5 | 5 | 4 (过小, 但能看到period-3 bulb)  | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 |  3 (宽度不够) | 5 (-25, 最外部没有使用文本渲染) | 77 | 
 | claude-3-opus |  | | | | | | | | | | | | | | | | | 0 (不是ASCII风格的Mandelbrot Set) | 
 | claude-3.5-sonnet | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (书写不正确) | 5 (Set 在浏览器实际实践中保证了顺序) | 5 | 0 (画面中心不在交界处) | 5 | 5 | 5 | 5 | 13 | 86 | 
+| Qwen-2.5-Max | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5| 5 | 5 | 5 | 5 | 3 (颜色顺序搞错了) |  5 | 5 | 12 | 90 |
 
 
 
@@ -88,22 +94,24 @@ Mandelbrot Set Meet LiBai 测试
 
 - 不包含 FPS 数据结果, 体现了 LLM 在需求还原上的表现
 
-![](./assets/images/llm_benchmark_results_no_fps.png)
+![](./assets/images/llm_benchmark_results_without_fps.png)
 
 
 
 ## 结论
 
-- 从目视来讲, 效果最好的是 DeepSeek-R1 和 OpenAI-o1. 其中 DeepSeek-R1 的代码优化水平最高, 而 OpenAI-o1 的需求还原能力最高. 
-- 两种统计方式中, claude-3.5-sonnet 稳坐第二名, 从实际目视来讲, claude-3.5-sonnet 也的确给出了很不错的效果 (除了没有居中转世动画和唐诗能力不太行以外, 其他表现均不错). 
-- 代码质量上, OpenAI-o1 当之无愧是第一名, 达到了一流开源软件的代码质量.
-- Gemini 综合质量垫底, 新出的 02-05 版本甚至没有 Gemini-2.0-Flash 和 Gemini-2.0-Flash-Thinking-Experimental-01-21 表现好.
+- 从目视来讲, 效果最好的是 DeepSeek-R1 和 Qwen-2.5-Max. 其中 DeepSeek-R1 的代码性能最高, 而 Qwen-2.5-Max 的需求还原能力最高, 并且在全部测试项中与 DeepSeek-R1分数一致, 仅有颜色顺序搞错了这一项扣分点. 
+- 两种统计方式中, claude-3.5-sonnet 稳坐第三名, 从实际目视来讲, claude-3.5-sonnet 也的确给出了很不错的效果 (除了没有按要求居中动画和唐诗能力不太行以外, 其他表现均不错). 
+- 代码质量上 (注意不是代码水平而是代码质量), OpenAI-o1 当之无愧是第一名, 达到了一流开源软件的代码质量.
+- Gemini 综合质量垫底, 新出的 02-05 版本甚至没有 Gemini-2.0-Flash 和 Gemini-2.0-Flash-Thinking-Experimental-01-21 表现好. 
+- 综合来讲本测试项目中最优秀的模型是 Qwen-2.5-Max.
 
 
 
 
+## Winner
 
 
-
+Qwen-2.5-Max
 
 

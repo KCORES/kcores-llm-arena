@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandelbrot Set Animation</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: black;
+      color: white;
+      font-family: monospace;
+      font-size: 8px;
+    }
+    canvas {
+      display: block;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.7);
+      color: black;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      line-height: 1.5;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    FPS: <span id="fps">0</span><br>
+    AVG FPS: <span id="avgFps">0</span><br>
+    CURRENT FRAME: <span id="currentFrame">0/200</span>
+  </div>
+  <canvas id="mandelbrotCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('mandelbrotCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Fullscreen setup
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Colors for Mandelbrot set
+    const colors = [
+      '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+      '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+      '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+      '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+    ];
+
+    // Characters from the poem "静夜思"
+    const poem = '床前明月光疑是地上霜举头望明月低头思故乡';
+    const uniqueChars = [...new Set(poem)].join('');
+
+    // Mandelbrot parameters
+    let scale = 0.5; // Initial scale (50% of screen)
+    let zoomFactor = 1.005; // Zoom factor per frame (0.5% increase)
+    let maxIterations = 200;
+    let frameCount = 0;
+    let totalFrames = 200;
+
+    // FPS tracking
+    let lastTime = performance.now();
+    let frameTimes = [];
+    let avgFps = 0;
+
+    // Render loop
+    function render() {
+      const now = performance.now();
+      const deltaTime = now - lastTime;
+      lastTime = now;
+
+      // Calculate FPS
+      const fps = 1000 / deltaTime;
+      frameTimes.push(fps);
+      if (frameTimes.length > totalFrames) frameTimes.shift();
+      avgFps = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+
+      // Update info
+      document.getElementById('fps').textContent = fps.toFixed(2);
+      document.getElementById('avgFps').textContent = avgFps.toFixed(2);
+      document.getElementById('currentFrame').textContent = `${frameCount + 1}/${totalFrames}`;
+
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Calculate Mandelbrot set
+      const width = canvas.width;
+      const height = canvas.height;
+      const centerX = -0.75; // Center of Main cardioid and period bulbs
+      const centerY = 0;
+      const zoom = scale * Math.min(width, height);
+
+      for (let x = 0; x < width; x += 8) {
+        for (let y = 0; y < height; y += 8) {
+          const real = (x - width / 2) / zoom + centerX;
+          const imag = (y - height / 2) / zoom + centerY;
+
+          let zReal = 0;
+          let zImag = 0;
+          let iteration = 0;
+
+          while (iteration < maxIterations) {
+            const r2 = zReal * zReal;
+            const i2 = zImag * zImag;
+
+            if (r2 + i2 > 4) break;
+
+            zImag = 2 * zReal * zImag + imag;
+            zReal = r2 - i2 + real;
+
+            iteration++;
+          }
+
+          if (iteration === maxIterations) continue; // Skip Main cardioid and period bulbs
+
+          const colorIndex = Math.floor((iteration / maxIterations) * colors.length);
+          const charIndex = iteration % uniqueChars.length;
+          const char = uniqueChars[charIndex];
+
+          ctx.fillStyle = colors[colorIndex];
+          ctx.fillText(char, x, y);
+        }
+      }
+
+      // Update scale and frame count
+      scale *= zoomFactor;
+      frameCount++;
+
+      if (frameCount >= totalFrames) {
+        frameCount = 0;
+        scale = 0.5; // Reset scale
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    // Start rendering
+    resizeCanvas();
+    ctx.font = '8px monospace';
+    ctx.textBaseline = 'top';
+    render();
+  </script>
+</body>
+</html>

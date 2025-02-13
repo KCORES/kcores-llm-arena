@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        /* Remove default margin and hide scrollbars */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        /* Make canvas display block */
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        /*
+         * Main entry point.
+         * This script creates a full-screen canvas and uses 8 web workers to
+         * compute an ASCII-style Mandelbrot set animation.
+         * The fractal view is always centered at the intersection of the main cardioid
+         * and the period-2 bulb (i.e. (-0.75, 0)), and the main fractal shape is initially
+         * scaled to 50% of the screen with an initial complex width of 3.0.
+         * Each frame zooms in 0.5% (multiplicative zoom factor 0.995) for 200 frames,
+         * then the animation resets.
+         */
+        window.onload = function () {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Each character cell (both width and height) is 8px.
+            const cellSize = 8;
+
+            // Global grid cell count (will be updated on resize)
+            let gridCols = 0, gridRows = 0;
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                gridCols = Math.floor(canvas.width / cellSize);
+                gridRows = Math.floor(canvas.height / cellSize);
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // Candidate characters from Li Bai's poem "静夜思"
+            // After duplicate removal and removing punctuation, the candidate array is:
+            // ["床", "前", "明", "月", "光", "疑", "是", "地", "上", "霜", "举", "头", "望", "低", "思", "故", "乡"]
+            const candidateChars = ["床", "前", "明", "月", "光", "疑", "是", "地", "上", "霜", "举", "头", "望", "低", "思", "故", "乡"];
+
+            // Candidate colors from light-to-dark (provided order) --
+            // during rendering the outermost (fewer iterations) characters use the darkest color.
+            const candidateColors = [
+                "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6",
+                "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+                "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073",
+                "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+            ];
+
+            // Maximum iteration count is set to the number of candidate colors (20)
+            const maxIterations = candidateColors.length;
+
+            // The fractal is always centered at (-0.75, 0)
+            const centerX = -0.75, centerY = 0;
+            // Initial Mandelbrot set view width (in complex plane) is chosen as 3.0
+            // so that the main fractal shape occupies roughly 50% of the screen.
+            const initialComplexWidth = 3.0;
+
+            // Animation parameters
+            let currentFrame = 0;
+            const totalFrames = 200;
+            // Each frame the view zooms by a factor of 0.995 (i.e. 0.5% zoom in per frame)
+            const zoomFactor = 0.995;
+
+            // FPS measurement
+            let lastFrameTime = performance.now();
+            let fps = 0;
+            let fpsSum = 0;
+            let fpsCount = 0;
+            let avgFPS = 0;
+
+            // Create 8 web workers for parallel computation (use up to 8 cores)
+            const numWorkers = 8;
+            const workers = [];
+            // The worker code string implements the actual computation for a range of grid rows.
+            const workerCode = `
+      self.onmessage = function(e) {
+        var data = e.data;
+        var startRow = data.startRow;
+        var endRow = data.endRow;
+        var gridCols = data.gridCols;
+        var gridRows = data.gridRows;
+        var currentComplexWidth = data.currentComplexWidth;
+        var currentComplexHeight = data.currentComplexHeight;
+        var centerX = data.centerX;
+        var centerY = data.centerY;
+        var maxIterations = data.maxIterations;
+        var candidateChars = data.candidateChars;
+        var candidateColors = data.candidateColors;
+        var results = [];
+        for (var row = startRow; row < endRow; row++) {
+          for (var col = 0; col < gridCols; col++) {
+            // Map grid cell to complex plane (sample at cell center)
+            var x = (col + 0.5) / gridCols - 0.5;
+            var y = (row + 0.5) / gridRows - 0.5;
+            var re = centerX + x * currentComplexWidth;
+            var im = centerY + y * currentComplexHeight;
+            
+            // Fast check: if point is in main cardioid, skip drawing (leave blank)
+            var a = re, b = im;
+            var q = (a - 0.25) * (a - 0.25) + b * b;
+            if (q * (q + (a - 0.25)) < 0.25 * b * b) {
+              continue;
+            }
+            // Fast check: if point is in period-2 bulb, skip drawing
+            if ((a + 1) * (a + 1) + b * b < 0.0625) {
+              continue;
+            }
+            // Iterate Mandelbrot function: z = z^2 + c
+            var zx = 0, zy = 0, iter = 0;
+            while (iter < maxIterations && (zx*zx + zy*zy) <= 4) {
+              var xtemp = zx*zx - zy*zy + re;
+              zy = 2*zx*zy + im;
+              zx = xtemp;
+              iter++;
+            }
+            // If point did not escape, treat it as inside the set (draw nothing)
+            if (iter === maxIterations) {
+              continue;
+            }
+            // Compute candidate color index.
+            // Outer points (low iter count) get the darkest color.
+            var colorIndex = maxIterations - iter - 1;
+            var color = candidateColors[colorIndex];
+            // Choose candidate character in cyclic order based on global cell index.
+            var char = candidateChars[(row * gridCols + col) % candidateChars.length];
+            results.push({row: row, col: col, char: char, color: color});
+          }
+        }
+        self.postMessage({results: results});
+      };
+      `;
+            const blob = new Blob([workerCode], { type: "application/javascript" });
+            const workerURL = URL.createObjectURL(blob);
+            for (let i = 0; i < numWorkers; i++) {
+                workers.push(new Worker(workerURL));
+            }
+
+            // Render one animation frame
+            function renderFrame() {
+                const now = performance.now();
+                const delta = now - lastFrameTime;
+                lastFrameTime = now;
+                fps = 1000 / delta;
+                fpsSum += fps;
+                fpsCount++;
+
+                // Compute the current view window in the complex plane
+                const currentZoom = Math.pow(zoomFactor, currentFrame);
+                const currentComplexWidth = initialComplexWidth * currentZoom;
+                // Maintain aspect ratio: use canvas.height/canvas.width
+                const currentComplexHeight = currentComplexWidth * (canvas.height / canvas.width);
+
+                // Divide grid rows evenly among workers
+                const rowsPerWorker = Math.floor(gridRows / numWorkers);
+                let workerPromises = [];
+                let startRow = 0;
+                for (let i = 0; i < numWorkers; i++) {
+                    let endRow = (i === numWorkers - 1) ? gridRows : startRow + rowsPerWorker;
+                    workerPromises.push(new Promise((resolve) => {
+                        workers[i].onmessage = function (e) {
+                            resolve(e.data.results);
+                        };
+                        workers[i].postMessage({
+                            startRow: startRow,
+                            endRow: endRow,
+                            gridCols: gridCols,
+                            gridRows: gridRows,
+                            currentComplexWidth: currentComplexWidth,
+                            currentComplexHeight: currentComplexHeight,
+                            centerX: centerX,
+                            centerY: centerY,
+                            maxIterations: maxIterations,
+                            candidateChars: candidateChars,
+                            candidateColors: candidateColors
+                        });
+                    }));
+                    startRow += rowsPerWorker;
+                }
+
+                Promise.all(workerPromises).then((workerResults) => {
+                    // Clear the entire canvas
+                    ctx.fillStyle = "black";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Set text parameters for drawing characters
+                    ctx.textBaseline = "top";
+                    ctx.font = cellSize + "px monospace";
+                    // Draw all computed characters
+                    workerResults.forEach(function (results) {
+                        results.forEach(function (item) {
+                            ctx.fillStyle = item.color;
+                            const x = item.col * cellSize;
+                            const y = item.row * cellSize;
+                            ctx.fillText(item.char, x, y);
+                        });
+                    });
+
+                    // Draw FPS and frame info indicator at top-left
+                    const indicatorPadding = 5;
+                    const indicatorX = 10;
+                    const indicatorY = 10;
+                    const indicatorLines = [
+                        "FPS: " + fps.toFixed(1),
+                        "AVG FPS: " + avgFPS.toFixed(1),
+                        "CURRENT FRAME: " + (currentFrame + 1) + "/" + totalFrames
+                    ];
+                    ctx.font = "12px sans-serif";
+                    const lineHeight = 14;
+                    const indicatorWidth = 150;
+                    const indicatorHeight = indicatorLines.length * lineHeight + indicatorPadding * 2;
+                    ctx.fillStyle = "rgba(255,255,255,0.7)";
+                    roundRect(ctx, indicatorX, indicatorY, indicatorWidth, indicatorHeight, 5, true, false);
+
+                    ctx.fillStyle = "black";
+                    for (let i = 0; i < indicatorLines.length; i++) {
+                        ctx.fillText(indicatorLines[i], indicatorX + indicatorPadding, indicatorY + indicatorPadding + i * lineHeight);
+                    }
+
+                    // Update frame counter and recalc avg FPS every 200 frames
+                    if (currentFrame >= totalFrames - 1) {
+                        avgFPS = fpsSum / fpsCount;
+                        fpsSum = 0;
+                        fpsCount = 0;
+                        currentFrame = 0;
+                    } else {
+                        currentFrame++;
+                    }
+
+                    requestAnimationFrame(renderFrame);
+                });
+            }
+
+            // Helper function to draw a rounded rectangle
+            function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+                if (typeof stroke === 'undefined') {
+                    stroke = true;
+                }
+                if (typeof radius === 'undefined') {
+                    radius = 5;
+                }
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + width - radius, y);
+                ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+                ctx.lineTo(x + width, y + height - radius);
+                ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+                ctx.lineTo(x + radius, y + height);
+                ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+                ctx.lineTo(x, y + radius);
+                ctx.quadraticCurveTo(x, y, x + radius, y);
+                ctx.closePath();
+                if (fill) {
+                    ctx.fill();
+                }
+                if (stroke) {
+                    ctx.stroke();
+                }
+            }
+
+            // Start the animation loop
+            requestAnimationFrame(renderFrame);
+        };
+    </script>
+</body>
+
+</html>
