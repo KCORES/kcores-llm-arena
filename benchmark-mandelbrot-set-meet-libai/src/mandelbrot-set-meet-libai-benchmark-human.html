@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>ASCII Mandelbrot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        canvas {
+            display: block;
+            background-color: #000;
+        }
+
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 8px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #000;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="info">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>CURRENT FRAME: <span id="currentFrame">0</span></div>
+    </div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const poem = '床前明月光疑是地上霜举头望明月低头思故乡';
+
+        // 去重处理
+        const uniqueChars = [];
+        const seen = new Set();
+        for (const char of poem) {
+            if (!seen.has(char)) {
+                seen.add(char);
+                uniqueChars.push(char);
+            }
+        }
+
+        // 颜色数组（从深到浅）
+        const colors = [
+            '#0f2350', '#17184b', '#1c305c', '#192f60', '#223a70',
+            '#2a4073', '#274a78', '#4a488e', '#4d4398', '#5654a2',
+            '#706caa', '#68699b', '#867ba9', '#8491c3', '#bbbcde',
+            '#bbc8e6', '#ebf6f7', '#e8ecef', '#eaedf7', '#eaf4fc'
+        ];
+
+        let scaleFactor = 1;
+        let currentFrame = 0;
+        const maxFrames = 200;
+        const center = { x: -0.75, y: 0 };
+        let frameTimes = [];
+        let avgFps = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function getViewBounds() {
+            const aspect = canvas.width / canvas.height;
+            const baseSize = 8 * (0.5 / scaleFactor);
+            return {
+                xmin: center.x - baseSize / 2,
+                xmax: center.x + baseSize / 2,
+                ymin: center.y - baseSize / (aspect * 2),
+                ymax: center.y + baseSize / (aspect * 2)
+            };
+        }
+
+        function isInMainCardioid(x, y) {
+            const q = (x - 0.25) ** 2 + y ** 2;
+            return q * (q + (x - 0.25)) < 0.25 * y ** 2;
+        }
+
+        function isInPeriod2Bulb(x, y) {
+            return (x + 1) ** 2 + y ** 2 < 0.0625;
+        }
+
+        function mandelbrot(x0, y0, maxIter) {
+            let x = 0, y = 0;
+            let iter = 0;
+            while (x * x + y * y <= 4 && iter < maxIter) {
+                const xtemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xtemp;
+                iter++;
+            }
+            return iter;
+        }
+
+        async function drawFrame() {
+            const start = performance.now();
+            const bounds = getViewBounds();
+            const cols = Math.floor(canvas.width / 8);
+            const rows = Math.floor(canvas.height / 8);
+            const charStep = uniqueChars.length;
+            let charIndex = 0;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '8px monospace';
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const cx = bounds.xmin + (x / cols) * (bounds.xmax - bounds.xmin);
+                    const cy = bounds.ymin + (y / rows) * (bounds.ymax - bounds.ymin);
+
+                    if (isInMainCardioid(cx, cy) || isInPeriod2Bulb(cx, cy)) continue;
+
+                    const iter = mandelbrot(cx, cy, 100);
+                    if (iter === 100) continue;
+
+                    const colorIdx = Math.min(colors.length - 1, Math.floor(iter / 5));
+                    ctx.fillStyle = colors[colorIdx];
+                    ctx.fillText(
+                        uniqueChars[charIndex++ % charStep],
+                        x * 8,
+                        (y + 1) * 8
+                    );
+                }
+            }
+
+            frameTimes.push(performance.now() - start);
+            if (frameTimes.length > 200) frameTimes.shift();
+        }
+
+        async function animate() {
+            if (currentFrame >= maxFrames) {
+                avgFps = 1000 / (frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length);
+                scaleFactor = 1;
+                currentFrame = 0;
+                frameTimes = [];
+            }
+
+            await drawFrame();
+
+            document.getElementById('fps').textContent =
+                (1000 / frameTimes[frameTimes.length - 1]).toFixed(1);
+            document.getElementById('avgFps').textContent = avgFps.toFixed(1);
+            document.getElementById('currentFrame').textContent =
+                `${currentFrame + 1}/${maxFrames}`;
+
+            scaleFactor *= 1.005;
+            currentFrame++;
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+
+</html>
