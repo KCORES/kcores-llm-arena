@@ -1,0 +1,57 @@
+All rights reserved (c) <2025><karminski>
+
+KCORES License Version 1.0
+
+Under the following conditions, hereby granted, free of charge, to any person 
+or legal entity obtaining a copy of this licensed work (including but not 
+limited to source code, Gerber files, CAD files, Verilog files, 3D rendered 
+images or videos, compiled binary files, and other files and/or related content, 
+collectively referred to as "licensed work"), the individual or legal entity 
+authorized shall have the right to dispose of the licensed work for any purpose, 
+including but not limited to use, copy, modify, derivative use, distribute, 
+publish, and sublicense:
+
+1. Individuals or legal entities must include the above copyright notice and this 
+license on each redistributed or derivative copy of the licensed work and may 
+not modify them.
+
+2. The use of this licensed work represents the participation of the licensed work 
+in the KCORES Open Source Hardware Organization, and this should be indicated 
+in the documentation of the licensed work.
+
+3. Entity products produced using this licensed work (including but not limited 
+to printed circuit boards, electronic components, molds, models, and other 
+related products or content produced or created using this licensed work) 
+must clearly indicate the copyright notice of the licensed work and the word 
+"KCORES" in a conspicuous location on the product.
+
+4. Software products produced using this licensed work must clearly indicate the 
+copyright information of the licensed work and the word "KCORES" in an easily 
+discernible manner on the software product interface or in the running 
+information.
+
+5. Each redistributed or derivative copy of the licensed work using this license 
+must have open source code and source files.
+
+"Open" means that the source code and source files can be publicly posted on 
+an internet public code hosting platform (such as github.com) and can be freely 
+obtained by anyone.
+
+The source code and source files of the work refer to the preferred form for 
+making modifications to the work. For executable files, the complete source 
+code represents all source code of the modules it contains, as well as any 
+relevant interface definition files and scripts used to compile and install 
+the executable file. However, as a special exception, the distributed source 
+code does not need to include any components of the operating system on which 
+the executable program runs that are distributed normally by the operating 
+system (such as compilers, kernels, etc.) in source or binary form, unless that 
+component itself comes with executable files. For engineering files such as CAD, 
+Gerber, or Verilog, they must be stored and provided in a way that can be opened 
+or imported by open-source editors.
+
+This licensed work is provided "as is" without any express or implied warranties, 
+including but not limited to the warranties of merchantability, fitness for a 
+particular purpose, and non-infringement. In no event shall the copyright holder 
+be liable for any claims, damages, or other liabilities arising out of, in 
+connection with, or in any way related to the software or the use or other 
+dealings in the software, whether in contract, tort, or otherwise.
