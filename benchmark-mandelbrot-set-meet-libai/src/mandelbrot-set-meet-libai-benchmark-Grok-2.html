@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot ASCII Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 5px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+            font-family: Arial, sans-serif;
+            color: black;
+            font-size: 12px;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="stats"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const stats = document.getElementById('stats');
+        let frameCount = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let lastTime = 0;
+        let totalFrames = 0;
+        let frameTimes = [];
+
+        // Settings
+        const WIDTH = window.innerWidth;
+        const HEIGHT = window.innerHeight;
+        const SCALE = 8; // 8px per character
+        const ZOOM_FACTOR = 1.005; // 0.5% zoom per frame
+        const MAX_ITERATIONS = 100;
+        const FRAMES = 200;
+
+        canvas.width = WIDTH;
+        canvas.height = HEIGHT;
+
+        // ASCII characters from "静夜思" by Li Bai, deduplicated and without punctuation
+        const characters = "床前明月光疑是地上霜举头望明月低头思故乡".split('');
+
+        // Color palette from light to dark
+        const colors = ['#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'];
+
+        function mandelbrot(x, y, zoom) {
+            let zx = 0, zy = 0, cx = (x - WIDTH / 2) / (0.5 * WIDTH * zoom) + 0.25, cy = (y - HEIGHT / 2) / (0.5 * HEIGHT * zoom);
+            let iter = 0;
+            while (zx * zx + zy * zy < 4 && iter < MAX_ITERATIONS) {
+                let temp = zx * zx - zy * zy + cx;
+                zy = 2 * zx * zy + cy;
+                zx = temp;
+                iter++;
+            }
+            return iter;
+        }
+
+        function drawFrame(zoom) {
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+            for (let y = 0; y < HEIGHT; y += SCALE) {
+                for (let x = 0; x < WIDTH; x += SCALE) {
+                    let iterations = mandelbrot(x, y, zoom);
+                    if (iterations === MAX_ITERATIONS) { // Main cardioid and period bulbs
+                        continue;
+                    }
+                    let colorIndex = Math.floor((MAX_ITERATIONS - iterations) * (colors.length - 1) / MAX_ITERATIONS);
+                    ctx.fillStyle = colors[colorIndex];
+                    ctx.fillText(characters[iterations % characters.length], x, y + SCALE);
+                }
+            }
+        }
+
+        function updateStats() {
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            fps = 1000 / delta;
+            frameTimes.push(fps);
+            if (frameTimes.length > FRAMES) frameTimes.shift();
+            avgFps = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+
+            stats.innerHTML = `FPS: ${fps.toFixed(2)}<br>AVG FPS: ${avgFps.toFixed(2)}<br>CURRENT FRAME: ${frameCount}/${FRAMES}`;
+        }
+
+        function animate() {
+            const zoom = Math.pow(ZOOM_FACTOR, frameCount);
+            drawFrame(zoom);
+            updateStats();
+
+            frameCount++;
+            if (frameCount >= FRAMES) {
+                frameCount = 0;
+                frameTimes = [];
+            }
+            requestAnimationFrame(animate);
+        }
+
+        ctx.font = `${SCALE}px monospace`;
+        ctx.textBaseline = 'top';
+        animate();
+    </script>
+</body>
+
+</html>

@@ -254,6 +254,27 @@ data = [
         "17 - 平均FPS水平": 12,
         "Final-Score": 90,
     },
+    {
+        "LLM": "Grok-2",
+        "1 - 使用 canvas 绘制动画": 5,
+        "2 - 全屏展示动画": 5,
+        "3 - 所有代码放在同一个HTML文件里面": 5,
+        "4 - Mandelbrot Set 图形美观度": 4,
+        "5 - Mandelbrot Set 的主要图形大小": 1,
+        "6 - Mandelbrot Set 的主要图形每渲染一次每帧放大 0.5%": 5,
+        "7 - 总计渲染200次": 5,
+        "8 - 总计渲染200次后重置并循环": 5,
+        "9 - 李白诗书写正确": 5,
+        "10 - 李白诗处理": 3,
+        "11 - Mandelbrot Set 的 Main cardioid and period bulbs 部分留空": 5,
+        "12 - 动画的中心应使始终为 Main cardioid and period bulbs 的交界处": 0,
+        "13 - 动画字体大小8px, 字体渲染排列也是8px，无间距 ": 5,
+        "14 - 字符从 mandelbrot set的最外围使用最深的颜色，然后依次变浅": 3,
+        "15 - 左上角指示器计算和展示正确": 5,
+        "16 - 指示器样式": 5,
+        "17 - 平均FPS水平": 1,
+        "Final-Score": 67,
+    },
 ]
 
 # Extract LLM names and scores (including all LLMs)
