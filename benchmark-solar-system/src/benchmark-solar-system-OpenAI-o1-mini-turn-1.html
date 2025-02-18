@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Solar System Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        #counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            color: #000;
+            padding: 10px;
+            border-radius: 10px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarSystem"></canvas>
+    <div id="counter">
+        FPS: <span id="fps">0</span><br>
+        AVG FPS: <span id="avgFps">0</span><br>
+        Earth Day: <span id="earthDay">0</span>
+    </div>
+    <script>
+        // Get canvas and context
+        const canvas = document.getElementById('solarSystem');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas to full screen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Define celestial bodies
+        const celestialBodies = [
+            {
+                name: 'Sun',
+                color: ['#f2831f', '#f15d22', '#d94125', '#a41d22'],
+                radius: 50,
+                distance: 0,
+                orbitalPeriod: 0
+            },
+            {
+                name: 'Mercury',
+                color: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'],
+                radius: 8,
+                distance: 60,
+                orbitalPeriod: 88
+            },
+            {
+                name: 'Venus',
+                color: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'],
+                radius: 14,
+                distance: 90,
+                orbitalPeriod: 225
+            },
+            {
+                name: 'Earth',
+                color: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'],
+                radius: 16,
+                distance: 120,
+                orbitalPeriod: 365
+            },
+            {
+                name: 'Mars',
+                color: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'],
+                radius: 12,
+                distance: 150,
+                orbitalPeriod: 687
+            },
+            {
+                name: 'Jupiter',
+                color: ['#282411', '#c08137', '#bfb09c', '#a6705b'],
+                radius: 30,
+                distance: 200,
+                orbitalPeriod: 4333
+            },
+            {
+                name: 'Saturn',
+                color: ['#f3cf89', '#dab778', '#736b59', '#c1a480'],
+                radius: 28,
+                distance: 250,
+                orbitalPeriod: 10759
+            },
+            {
+                name: 'Uranus',
+                color: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'],
+                radius: 22,
+                distance: 300,
+                orbitalPeriod: 30687
+            },
+            {
+                name: 'Neptune',
+                color: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'],
+                radius: 20,
+                distance: 350,
+                orbitalPeriod: 60190
+            },
+            {
+                name: 'Pluto',
+                color: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'],
+                radius: 6,
+                distance: 400,
+                orbitalPeriod: 90560
+            }
+        ];
+
+        // Off-screen canvas for orbits
+        const orbitCanvas = document.createElement('canvas');
+        orbitCanvas.width = canvas.width;
+        orbitCanvas.height = canvas.height;
+        const orbitCtx = orbitCanvas.getContext('2d');
+
+        // Draw orbits
+        function drawOrbits() {
+            orbitCtx.clearRect(0, 0, orbitCanvas.width, orbitCanvas.height);
+            orbitCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            orbitCtx.lineWidth = 1;
+            celestialBodies.forEach(body => {
+                if (body.distance === 0) return; // Skip Sun
+                orbitCtx.beginPath();
+                orbitCtx.arc(orbitCanvas.width / 2, orbitCanvas.height / 2, body.distance, 0, 2 * Math.PI);
+                orbitCtx.stroke();
+            });
+        }
+        drawOrbits();
+
+        // Web Worker for position calculations
+        const worker = new Worker(URL.createObjectURL(new Blob([`
+            self.onmessage = function(e) {
+                const { bodies, time } = e.data;
+                const updatedBodies = bodies.map(body => {
+                    if (body.orbitalPeriod === 0) return body;
+                    const angle = (2 * Math.PI / body.orbitalPeriod) * time;
+                    return {
+                        ...body,
+                        x: body.distance * Math.cos(angle),
+                        y: body.distance * Math.sin(angle)
+                    };
+                });
+                self.postMessage(updatedBodies);
+            };
+        `], { type: 'application/javascript' })));
+
+        let bodies = celestialBodies.map(body => ({ ...body, x: 0, y: 0 }));
+
+        worker.onmessage = function (e) {
+            bodies = e.data;
+        };
+
+        let startTime = Date.now();
+        let earthDay = 0;
+
+        // FPS counters
+        let fps = 0;
+        let avgFps = 0;
+        let fpsInterval = 1000;
+        let lastFpsUpdate = Date.now();
+        let frameCount = 0;
+        let totalFps = 0;
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            const currentTime = Date.now();
+            const elapsed = (currentTime - startTime) / 1000; // in seconds
+            earthDay = Math.floor(elapsed / (10 * 86400 / 86400)); // 1 second = 10 Earth days
+
+            // Update positions via Web Worker
+            worker.postMessage({ bodies: celestialBodies, time: elapsed * 10 });
+
+            // Draw background
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw orbits
+            ctx.drawImage(orbitCanvas, 0, 0);
+
+            // Draw celestial bodies
+            bodies.forEach(body => {
+                const x = canvas.width / 2 + body.x;
+                const y = canvas.height / 2 + body.y;
+
+                // Draw planet
+                ctx.beginPath();
+                ctx.arc(x, y, body.radius, 0, 2 * Math.PI);
+                const gradient = ctx.createRadialGradient(x, y, body.radius * 0.1, x, y, body.radius);
+                gradient.addColorStop(0, body.color[0]);
+                gradient.addColorStop(0.33, body.color[1]);
+                gradient.addColorStop(0.66, body.color[2]);
+                gradient.addColorStop(1, body.color[3]);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Draw label
+                ctx.fillStyle = 'white';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(body.name, x, y - body.radius - 5);
+            });
+
+            // Update FPS
+            frameCount++;
+            const now = Date.now();
+            if (now - lastFpsUpdate >= fpsInterval) {
+                fps = frameCount / ((now - lastFpsUpdate) / 1000);
+                totalFps += fps;
+                avgFps = totalFps / Math.floor((now - startTime) / fpsInterval);
+                document.getElementById('fps').textContent = fps.toFixed(2);
+                document.getElementById('avgFps').textContent = avgFps.toFixed(2);
+                lastFpsUpdate = now;
+                frameCount = 0;
+            }
+
+            // Update Earth Day
+            document.getElementById('earthDay').textContent = earthDay;
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarSystem"></canvas>
+    <script>
+        // ... existing code ...
+        const canvas = document.getElementById('solarSystem');
+        const ctx = canvas.getContext('2d');
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+        // Celestial bodies data
+        const bodies = [
+            { name: 'Sun', radius: 50, distance: 0, color: ['#f2831f', '#f15d22', '#d94125', '#a41d22'], angle: 0, speed: 0 },
+            { name: 'Mercury', radius: 5, distance: 100, color: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], angle: 0, speed: 0.047 },
+            { name: 'Venus', radius: 8, distance: 150, color: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], angle: 0, speed: 0.035 },
+            { name: 'Earth', radius: 10, distance: 200, color: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], angle: 0, speed: 0.03 },
+            { name: 'Mars', radius: 7, distance: 250, color: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], angle: 0, speed: 0.024 },
+            { name: 'Jupiter', radius: 30, distance: 350, color: ['#282411', '#c08137', '#bfb09c', '#a6705b'], angle: 0, speed: 0.013 },
+            { name: 'Saturn', radius: 25, distance: 450, color: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], angle: 0, speed: 0.009 },
+            { name: 'Uranus', radius: 20, distance: 550, color: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], angle: 0, speed: 0.006 },
+            { name: 'Neptune', radius: 20, distance: 650, color: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], angle: 0, speed: 0.005 },
+            { name: 'Pluto', radius: 5, distance: 750, color: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], angle: 0, speed: 0.004 }
+        ];
+
+        // ... existing code ...
+        function drawBody(body) {
+            const x = width / 2 + Math.cos(body.angle) * body.distance;
+            const y = height / 2 + Math.sin(body.angle) * body.distance;
+
+            // Draw orbit
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.beginPath();
+            ctx.arc(width / 2, height / 2, body.distance, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Draw body
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, body.radius);
+            body.color.forEach((color, i) => {
+                gradient.addColorStop(i / body.color.length, color);
+            });
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, y, body.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw label
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(body.name, x, y + body.radius + 15);
+        }
+
+        // ... existing code ...
+        let lastTime = 0;
+        let fps = 0;
+        let frameCount = 0;
+        let startTime = performance.now();
+        let earthDays = 0;
+
+        function drawFPS() {
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            fps = Math.round(1000 / delta);
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.beginPath();
+            ctx.roundRect(10, 10, 150, 60, 5);
+            ctx.fill();
+
+            ctx.fillStyle = 'black';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`FPS: ${fps}`, 20, 30);
+            ctx.fillText(`AVG FPS: ${Math.round(frameCount * 1000 / (now - startTime))}`, 20, 50);
+            ctx.fillText(`Earth Day: ${Math.floor(earthDays)}`, 20, 70);
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+
+            bodies.forEach(body => {
+                body.angle += body.speed;
+                drawBody(body);
+            });
+
+            earthDays += 10 * (1 / 60); // 10 days per second at 60 FPS
+            drawFPS();
+            frameCount++;
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        });
+
+        animate();
+    </script>
+</body>
+
+</html>

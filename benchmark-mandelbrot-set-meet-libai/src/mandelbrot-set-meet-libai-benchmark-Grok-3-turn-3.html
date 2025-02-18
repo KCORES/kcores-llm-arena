@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            color: #000;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps-counter"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsCounter = document.getElementById('fps-counter');
+
+        // 设置全屏
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 李白《静夜思》去重后的字符数组
+        const poem = '床前明月光疑是地上霜举头望低念故乡';
+        const chars = [...new Set(poem.split(''))]; // 去重并保持顺序
+
+        // 颜色数组，从深到浅
+        const colors = [
+            '#0f2350', '#17184b', '#1c305c', '#192f60', '#223a70', '#2a4073',
+            '#274a78', '#4a488e', '#4d4398', '#5654a2', '#706caa', '#68699b',
+            '#867ba9', '#8491c3', '#bbbcde', '#bbc8e6', '#ebf6f7', '#e8ecef',
+            '#eaedf7', '#eaf4fc'
+        ];
+
+        // 动画参数
+        let frame = 0;
+        const maxFrames = 200;
+        let scale = 0.5; // 初始50%大小
+        const scaleIncrease = 0.005; // 每帧放大0.5%
+
+        // FPS 计算
+        let frameTimes = [];
+        let lastTime = performance.now();
+        let avgFps = 0;
+
+        // Mandelbrot Set 参数
+        const maxIterations = 50;
+        const centerX = -0.5; // 主心形边界中心
+        const centerY = 0;
+
+        // Worker 用于并行计算
+        const workerCount = 8;
+        const workers = [];
+        let workerResults = [];
+        let completedWorkers = 0;
+
+        // 初始化 Workers
+        for (let i = 0; i < workerCount; i++) {
+            workers[i] = new Worker(URL.createObjectURL(new Blob([`
+                self.onmessage = function(e) {
+                    const { startY, endY, width, height, scale, centerX, centerY, maxIterations } = e.data;
+                    const result = new Uint8Array((endY - startY) * width);
+                    
+                    for (let y = startY; y < endY; y++) {
+                        for (let x = 0; x < width; x++) {
+                            const real = centerX + (x - width / 2) * 4 / (width * scale);
+                            const imag = centerY + (y - height / 2) * 4 / (height * scale);
+                            
+                            let zr = 0, zi = 0;
+                            let iteration = 0;
+                            
+                            while (iteration < maxIterations && zr * zr + zi * zi < 4) {
+                                const zr2 = zr * zr - zi * zi + real;
+                                zi = 2 * zr * zi + imag;
+                                zr = zr2;
+                                iteration++;
+                            }
+                            
+                            // 检查是否为主心形或周期球
+                            const p = Math.sqrt((real + 1) * (real + 1) + imag * imag);
+                            const isCardioid = (real + 1) < (p - 2 * p * p + p * p * p) / 4;
+                            const isBulb = (real + 1) * (real + 1) + imag * imag < 1/16;
+                            
+                            result[(y - startY) * width + x] = (isCardioid || isBulb) ? 255 : iteration;
+                        }
+                    }
+                    self.postMessage(result);
+                };
+            `], { type: 'application/javascript' })));
+
+            workers[i].onmessage = (e) => {
+                workerResults[i] = e.data;
+                completedWorkers++;
+                if (completedWorkers === workerCount) {
+                    renderFrame();
+                }
+            };
+        }
+
+        function computeMandelbrot() {
+            completedWorkers = 0;
+            workerResults = new Array(workerCount);
+            const chunkHeight = Math.floor(canvas.height / workerCount);
+
+            for (let i = 0; i < workerCount; i++) {
+                const startY = i * chunkHeight;
+                const endY = (i === workerCount - 1) ? canvas.height : (i + 1) * chunkHeight;
+
+                workers[i].postMessage({
+                    startY,
+                    endY,
+                    width: canvas.width,
+                    height: canvas.height,
+                    scale,
+                    centerX,
+                    centerY,
+                    maxIterations
+                });
+            }
+        }
+
+        function renderFrame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '8px monospace';
+
+            // 合并所有worker结果
+            for (let i = 0; i < workerCount; i++) {
+                const chunkHeight = Math.floor(canvas.height / workerCount);
+                const startY = i * chunkHeight;
+                const data = workerResults[i];
+
+                for (let y = 0; y < data.length / canvas.width; y++) {
+                    for (let x = 0; x < canvas.width; x++) {
+                        const value = data[y * canvas.width + x];
+                        if (value === 255) continue; // 主心形和周期球留空
+
+                        const colorIndex = Math.min(
+                            Math.floor((value / maxIterations) * colors.length),
+                            colors.length - 1
+                        );
+                        ctx.fillStyle = colors[colorIndex];
+                        const char = chars[(x + y) % chars.length];
+                        ctx.fillText(char, x * 8, (startY + y) * 8);
+                    }
+                }
+            }
+
+            // 更新FPS
+            const now = performance.now();
+            const delta = now - lastTime;
+            const fps = 1000 / delta;
+            frameTimes.push(fps);
+            if (frameTimes.length > 60) frameTimes.shift();
+            lastTime = now;
+
+            // 更新帧计数和缩放
+            frame++;
+            scale += scaleIncrease;
+            if (frame >= maxFrames) {
+                frame = 0;
+                scale = 0.5;
+                avgFps = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+                frameTimes = [];
+            }
+
+            // 显示FPS和帧信息
+            fpsCounter.textContent = `FPS: ${fps.toFixed(1)} | AVG FPS: ${avgFps.toFixed(1)} | CURRENT FRAME: ${frame}/${maxFrames}`;
+
+            // 下一帧
+            requestAnimationFrame(animate);
+        }
+
+        function animate() {
+            computeMandelbrot();
+        }
+
+        // 开始动画
+        animate();
+
+        // 窗口大小调整
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+
+</html>

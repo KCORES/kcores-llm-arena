@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarSystemCanvas"></canvas>
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('solarSystemCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Offscreen canvas for static elements
+        const staticCanvas = new OffscreenCanvas(canvas.width, canvas.height);
+        const staticCtx = staticCanvas.getContext('2d');
+        drawOrbits(staticCtx);
+
+        // Planets and Sun data
+        const celestialBodies = [
+            { name: 'Sun', radius: 50, colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'], orbit: 0 },
+            { name: 'Mercury', radius: 7, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], orbit: 100 },
+            { name: 'Venus', radius: 10, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], orbit: 150 },
+            { name: 'Earth', radius: 10, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], orbit: 200 },
+            { name: 'Mars', radius: 8, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], orbit: 250 },
+            { name: 'Jupiter', radius: 20, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'], orbit: 300 },
+            { name: 'Saturn', radius: 18, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], orbit: 350 },
+            { name: 'Uranus', radius: 16, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], orbit: 400 },
+            { name: 'Neptune', radius: 16, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], orbit: 450 },
+            { name: 'Pluto', radius: 6, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], orbit: 500 }
+        ];
+
+        let earthDay = 0;
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+        let avgFPS = 0;
+
+        // Web Worker for position calculation
+        const worker = new Worker(URL.createObjectURL(new Blob([`
+            self.onmessage = function(e) {
+                const bodies = e.data.bodies;
+                const earthDay = e.data.earthDay;
+                const newPositions = bodies.map(body => {
+                    const angle = (earthDay / 365) * 2 * Math.PI * (body.orbit / 100);
+                    return {
+                        x: Math.cos(angle) * body.orbit + canvas.width / 2,
+                        y: Math.sin(angle) * body.orbit + canvas.height / 2
+                    };
+                });
+                self.postMessage(newPositions);
+            }
+        `], { type: 'application/javascript' })));
+
+        function drawOrbits(ctx) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            celestialBodies.forEach(body => {
+                if (body.orbit > 0) {
+                    ctx.beginPath();
+                    ctx.arc(canvas.width / 2, canvas.height / 2, body.orbit, 0, 2 * Math.PI);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function drawCelestialBody(ctx, body, x, y) {
+            for (let i = 0; i < body.radius * 2; i++) {
+                for (let j = 0; j < body.radius * 2; j++) {
+                    let dx = i - body.radius;
+                    let dy = j - body.radius;
+                    if (dx * dx + dy * dy <= body.radius * body.radius) {
+                        ctx.fillStyle = body.colors[Math.floor(Math.random() * 4)];
+                        ctx.fillRect(x + dx, y + dy, 1, 1);
+                    }
+                }
+            }
+        }
+
+        function drawLabels(ctx, body, x, y) {
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`[${body.name}]`, x, y - body.radius - 10);
+        }
+
+        function animate(timestamp) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(staticCanvas, 0, 0);
+
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+            fps = 1000 / deltaTime;
+            frameCount++;
+            if (frameCount % 60 === 0) {
+                avgFPS = (avgFPS * 59 + fps) / 60;
+            }
+
+            earthDay += deltaTime / 100;  // 1 second = 10 Earth days
+
+            worker.postMessage({ bodies: celestialBodies, earthDay: earthDay });
+
+            worker.onmessage = function (e) {
+                const positions = e.data;
+                positions.forEach((pos, i) => {
+                    drawCelestialBody(ctx, celestialBodies[i], pos.x, pos.y);
+                    drawLabels(ctx, celestialBodies[i], pos.x, pos.y);
+                });
+            };
+
+            // FPS Counter
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(10, 10, 150, 50);
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+            ctx.fillText(`FPS: ${fps.toFixed(2)}`, 20, 30);
+            ctx.fillText(`AVG FPS: ${avgFPS.toFixed(2)}`, 20, 50);
+            ctx.fillText(`Earth Day: ${Math.floor(earthDay)}`, 20, 70);
+
+            requestAnimationFrame(animate);
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

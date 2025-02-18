@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Solar System Animation</title>
+    <style>
+        /* Make the canvas take the full screen */
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            width: 100%;
+            height: 100%;
+        }
+
+        #mainCanvas {
+            display: block;
+        }
+
+        /* FPS and Earth day counter display */
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            background-color: rgba(255, 255, 255, 0.7);
+            color: #000;
+            font-family: sans-serif;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mainCanvas"></canvas>
+
+    <div id="stats">
+        <div id="fpsInfo">FPS: 0<br>AVG FPS: 0<br>Earth Day: 0</div>
+    </div>
+
+    <script>
+        /*
+          We define planet data here, including:
+            - name (in Chinese for labels)
+            - 4 colors set for gradient fill
+            - radius (relative size)
+            - orbital radius (in px)
+            - orbital period (in Earth days)
+        */
+        const planetData = [
+            {
+                name: "太阳",
+                colors: ["#f2831f", "#f15d22", "#d94125", "#a41d22"],
+                radius: 40, // largest
+                orbitRadius: 0, // sun is at center
+                period: 1 // not used, just a placeholder
+            },
+            {
+                name: "水星",
+                colors: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"],
+                radius: 5,
+                orbitRadius: 60,
+                period: 88
+            },
+            {
+                name: "金星",
+                colors: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"],
+                radius: 6,
+                orbitRadius: 75,
+                period: 225
+            },
+            {
+                name: "地球",
+                colors: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"],
+                radius: 6,
+                orbitRadius: 90,
+                period: 365
+            },
+            {
+                name: "火星",
+                colors: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"],
+                radius: 5,
+                orbitRadius: 105,
+                period: 687
+            },
+            {
+                name: "木星",
+                colors: ["#282411", "#c08137", "#bfb09c", "#a6705b"],
+                radius: 12,
+                orbitRadius: 130,
+                period: 4333
+            },
+            {
+                name: "土星",
+                colors: ["#f3cf89", "#dab778", "#736b59", "#c1a480"],
+                radius: 10,
+                orbitRadius: 160,
+                period: 10759
+            },
+            {
+                name: "天王星",
+                colors: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"],
+                radius: 8,
+                orbitRadius: 190,
+                period: 30687
+            },
+            {
+                name: "海王星",
+                colors: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"],
+                radius: 8,
+                orbitRadius: 220,
+                period: 60190
+            },
+            {
+                name: "冥王星",
+                colors: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"],
+                radius: 4,
+                orbitRadius: 250,
+                period: 90560
+            }
+        ];
+
+        /*
+          Create a hidden offscreen canvas for each planet,
+          filled with a radial gradient or any blended fill
+          using the 4 color stops.
+        */
+        function createPlanetTexture(radius, colors) {
+            const size = radius * 2;
+            const offscreen = document.createElement("canvas");
+            offscreen.width = size;
+            offscreen.height = size;
+            const ctx = offscreen.getContext("2d");
+
+            // Create radial gradient from center to edge
+            const gradient = ctx.createRadialGradient(
+                radius, radius, 1,
+                radius, radius, radius
+            );
+            // We only add 4 color stops as requested
+            gradient.addColorStop(0, colors[0]);
+            gradient.addColorStop(0.3, colors[1]);
+            gradient.addColorStop(0.6, colors[2]);
+            gradient.addColorStop(1, colors[3]);
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(radius, radius, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            return offscreen;
+        }
+
+        /*
+          Prepare an offscreen canvas for the orbits (static).
+          This will save performance by not re-drawing orbit circles repeatedly.
+        */
+        let orbitCanvas, orbitCtx;
+        function createOrbitCanvas(width, height, planets) {
+            orbitCanvas = document.createElement("canvas");
+            orbitCanvas.width = width;
+            orbitCanvas.height = height;
+            orbitCtx = orbitCanvas.getContext("2d");
+            orbitCtx.clearRect(0, 0, width, height);
+
+            orbitCtx.strokeStyle = "rgba(255,255,255,0.3)";
+            orbitCtx.lineWidth = 1;
+
+            // Draw orbits for each planet except the Sun
+            for (let i = 1; i < planets.length; i++) {
+                const oR = planets[i].orbitRadius;
+                orbitCtx.beginPath();
+                orbitCtx.arc(width / 2, height / 2, oR, 0, 2 * Math.PI);
+                orbitCtx.stroke();
+            }
+        }
+
+        /*
+          Manage the Web Worker for planet positions.
+          We'll compute the angle for each planet over time.
+        */
+        let worker;
+        function initWorker(planets) {
+            const blobCode = `
+    let planetsData = [];
+    let lastTime = 0;
+    let timeScale = 10.0; // 1 second = 10 Earth days
+
+    // Called when main thread sends data
+    onmessage = function(e) {
+      if (e.data.type === 'init') {
+        planetsData = e.data.planets;
+        lastTime = performance.now();
+      } else if (e.data.type === 'update') {
+        let currentTime = performance.now();
+        let delta = (currentTime - lastTime) / 1000.0; // in seconds
+        lastTime = currentTime;
+
+        // Calculate angles
+        // For a planet with period p (in Earth days):
+        //   daily angular speed = 2*pi / p
+        //   timeScale means delta seconds -> delta * timeScale (days)
+        //   so angle increment = daily angular speed * (delta * timeScale)
+        // We'll store angle in data itself for demonstration
+        for (let i = 1; i < planetsData.length; i++) {
+          let p = planetsData[i].period;
+          let dailyAngleSpeed = (2 * Math.PI) / p;
+          let angleIncrement = dailyAngleSpeed * (delta * timeScale);
+          planetsData[i].angle = (planetsData[i].angle || 0) + angleIncrement;
+        }
+
+        postMessage({ type: 'positions', planets: planetsData, delta: delta });
+      }
+    };
+  `;
+
+            const blob = new Blob([blobCode], { type: "application/javascript" });
+            const blobURL = URL.createObjectURL(blob);
+
+            worker = new Worker(blobURL);
+
+            // Initialize worker with planet data
+            worker.postMessage({ type: "init", planets: planets });
+        }
+
+        /*
+          Main variables for animation
+        */
+        const canvas = document.getElementById("mainCanvas");
+        let ctx = canvas.getContext("2d");
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        canvas.width = width;
+        canvas.height = height;
+
+        // Store textures
+        let planetTextures = [];
+
+        // For FPS calculation
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+        let avgFps = 0;
+        const fpsBufferSize = 60;
+        let fpsBuffer = [];
+
+        // Track Earth day count. We'll do it based on elapsed real time * timeScale
+        let totalElapsedSeconds = 0;
+        let earthDayCount = 0;
+
+        /*
+          Initialize everything
+        */
+        function init() {
+            // Create textures for all planets
+            for (let i = 0; i < planetData.length; i++) {
+                planetTextures.push(createPlanetTexture(planetData[i].radius, planetData[i].colors));
+            }
+            // Create orbit canvas
+            createOrbitCanvas(width, height, planetData);
+
+            // Initialize web worker
+            initWorker(planetData);
+
+            // Listen for worker updates
+            worker.onmessage = function (e) {
+                if (e.data.type === 'positions') {
+                    // e.data.planets has updated angles
+                    planetData.forEach((p, index) => {
+                        if (index > 0) {
+                            p.angle = e.data.planets[index].angle;
+                        }
+                    });
+                    // We also get delta to update our Earth day count
+                    totalElapsedSeconds += e.data.delta;
+                    earthDayCount = totalElapsedSeconds * 10; // since timeScale=10 means delta seconds => 10 days
+                }
+            };
+
+            // Start animation loop
+            requestAnimationFrame(animate);
+        }
+
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            // Calculate frame-based FPS
+            frameCount++;
+            const delta = (currentTime - lastFrameTime) / 1000; // in seconds
+            lastFrameTime = currentTime;
+
+            fps = 1 / delta;
+            fpsBuffer.push(fps);
+            if (fpsBuffer.length > fpsBufferSize) {
+                fpsBuffer.shift();
+            }
+            const sumFps = fpsBuffer.reduce((a, b) => a + b, 0);
+            avgFps = sumFps / fpsBuffer.length;
+
+            // Ask worker to update positions
+            worker.postMessage({ type: "update" });
+
+            // Clear main canvas
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw the orbit lines from offscreen canvas
+            ctx.drawImage(orbitCanvas, 0, 0);
+
+            // Draw the Sun and planets
+            // Center is (width/2, height/2)
+            for (let i = 0; i < planetData.length; i++) {
+                const p = planetData[i];
+                const tex = planetTextures[i];
+                if (i === 0) {
+                    // Sun is at the center
+                    ctx.drawImage(tex, (width / 2) - p.radius, (height / 2) - p.radius);
+                    // Label the Sun
+                    drawLabel(ctx, p.name, width / 2, height / 2 - p.radius - 10);
+                } else {
+                    const angle = p.angle || 0;
+                    const px = width / 2 + Math.cos(angle) * p.orbitRadius;
+                    const py = height / 2 + Math.sin(angle) * p.orbitRadius;
+                    // Draw planet
+                    ctx.drawImage(tex, px - p.radius, py - p.radius);
+
+                    // Draw label above planet
+                    drawLabel(ctx, p.name, px, py - p.radius - 10);
+                }
+            }
+
+            // Draw FPS info and Earth day count
+            document.getElementById("fpsInfo").innerHTML =
+                "FPS: " + fps.toFixed(1) +
+                "<br>AVG FPS: " + avgFps.toFixed(1) +
+                "<br>Earth Day: " + earthDayCount.toFixed(1);
+        }
+
+        /*
+          Helper function to handle text label in Chinese.
+          It will be drawn centered horizontally at (x, y).
+        */
+        function drawLabel(context, text, x, y) {
+            context.save();
+            context.fillStyle = "#fff";
+            context.font = "14px sans-serif";
+            context.textAlign = "center";
+            context.fillText("[" + text + "]", x, y);
+            context.restore();
+        }
+
+        /*
+          Adjust the canvas size on window resize
+        */
+        window.addEventListener("resize", function () {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            createOrbitCanvas(width, height, planetData);
+        });
+
+        /*
+          Start initialization once page loads
+        */
+        window.onload = init;
+    </script>
+</body>
+
+</html>

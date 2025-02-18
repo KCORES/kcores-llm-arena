@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('solarCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+        // FPS and Earth Day counters
+        let fps = 0;
+        let avgFps = 0;
+        let framesThisSecond = 0;
+        let lastFpsUpdate = 0;
+        let earthDay = 0;
+
+        const fpsDisplay = {
+            sampleBuffer: [],
+            sampleSize: 60,
+            update: function (fps) {
+                this.sampleBuffer.push(fps);
+                if (this.sampleBuffer.length > this.sampleSize) {
+                    this.sampleBuffer.shift();
+                }
+
+                let sum = 0;
+                for (let i = 0; i < this.sampleBuffer.length; i++) {
+                    sum += this.sampleBuffer[i];
+                }
+
+                return sum / this.sampleBuffer.length;
+            }
+        };
+
+        // Celestial Bodies
+        const sun = {
+            name: 'Sun',
+            radius: 50, // Relative size
+            colorPalette: ['#f2831f', '#f15d22', '#d94125', '#a41d22'],
+            x: width / 2,
+            y: height / 2,
+        };
+
+        const planets = [
+            { name: 'Mercury', radius: 5, colorPalette: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], orbitRadius: 80, period: 88, angle: 0 },
+            { name: 'Venus', radius: 8, colorPalette: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], orbitRadius: 120, period: 225, angle: 0 },
+            { name: 'Earth', radius: 9, colorPalette: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], orbitRadius: 170, period: 365, angle: 0 },
+            { name: 'Mars', radius: 7, colorPalette: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], orbitRadius: 220, period: 687, angle: 0 },
+            { name: 'Jupiter', radius: 25, colorPalette: ['#282411', '#c08137', '#bfb09c', '#a6705b'], orbitRadius: 320, period: 4333, angle: 0 },
+            { name: 'Saturn', radius: 22, colorPalette: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], orbitRadius: 420, period: 10759, angle: 0, ringRadius: 30 }, // Added ringRadius
+            { name: 'Uranus', radius: 15, colorPalette: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], orbitRadius: 520, period: 30687, angle: 0 },
+            { name: 'Neptune', radius: 14, colorPalette: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], orbitRadius: 620, period: 60190, angle: 0 },
+            { name: 'Pluto', radius: 4, colorPalette: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], orbitRadius: 700, period: 90560, angle: 0 },
+        ];
+
+
+        // Off-screen canvas for orbits
+        const orbitCanvas = document.createElement('canvas');
+        orbitCanvas.width = width;
+        orbitCanvas.height = height;
+        const orbitCtx = orbitCanvas.getContext('2d');
+
+        // Draw orbits on off-screen canvas
+        orbitCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        orbitCtx.lineWidth = 1;
+        planets.forEach(planet => {
+            orbitCtx.beginPath();
+            orbitCtx.arc(width / 2, height / 2, planet.orbitRadius, 0, 2 * Math.PI);
+            orbitCtx.stroke();
+        });
+
+        function drawPlanet(planet) {
+            ctx.beginPath();
+            // Use a more distinctive pixel pattern
+            let pixelSize = Math.max(1, Math.floor(planet.radius / 4)); // Ensure at least 1px
+
+            for (let i = 0; i < pixelSize * 2; i++) {
+                for (let j = 0; j < pixelSize * 2; j++) {
+                    if ((i + j) % 2 === 0) {
+                        ctx.fillStyle = planet.colorPalette[0];
+                    }
+                    else {
+                        ctx.fillStyle = planet.colorPalette[1];
+                    }
+                    ctx.fillRect(planet.x - planet.radius + i * pixelSize, planet.y - planet.radius + j * pixelSize, pixelSize, pixelSize);
+
+                }
+            }
+            ctx.closePath();
+        }
+
+        function drawSun(sun) {
+            ctx.beginPath();
+            let pixelSize = Math.max(1, Math.floor(sun.radius / 4));
+
+            for (let i = 0; i < pixelSize * 2; i++) {
+                for (let j = 0; j < pixelSize * 2; j++) {
+                    if ((i + j) % 2 === 0) {
+                        ctx.fillStyle = sun.colorPalette[0];
+                    }
+                    else {
+                        ctx.fillStyle = sun.colorPalette[1];
+                    }
+                    ctx.fillRect(sun.x - sun.radius + i * pixelSize, sun.y - sun.radius + j * pixelSize, pixelSize, pixelSize);
+                }
+            }
+            ctx.closePath();
+        }
+
+        function update() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            orbitCanvas.width = width;
+            orbitCanvas.height = height;
+
+            orbitCtx.clearRect(0, 0, width, height);
+            orbitCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            orbitCtx.lineWidth = 1;
+            planets.forEach(planet => {
+                orbitCtx.beginPath();
+                orbitCtx.arc(width / 2, height / 2, planet.orbitRadius, 0, 2 * Math.PI);
+                orbitCtx.stroke();
+            });
+        }
+
+        function drawText(text, x, y) {
+            ctx.font = '12px Arial';
+            ctx.fillStyle = 'black';
+            ctx.globalAlpha = 0.7;
+            ctx.beginPath();
+            ctx.roundRect(x - 25, y - 15, 50, 20, 5);
+            ctx.fill();
+            ctx.closePath();
+
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, x, y - 2);
+        }
+
+
+        function gameLoop(timestamp) {
+            // FPS calculation
+            if (timestamp < lastFpsUpdate + 1000) {
+                framesThisSecond++;
+            } else {
+                fps = framesThisSecond;
+                avgFps = fpsDisplay.update(fps);
+                framesThisSecond = 0;
+                lastFpsUpdate = timestamp;
+            }
+            earthDay += 10;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw static orbits from the off-screen canvas
+            ctx.drawImage(orbitCanvas, 0, 0);
+
+            // Update planet positions
+            planets.forEach(planet => {
+                planet.angle += (360 / planet.period) * 10 / 365; // 10 Earth days per second
+                planet.x = width / 2 + planet.orbitRadius * Math.cos(planet.angle * Math.PI / 180);
+                planet.y = height / 2 + planet.orbitRadius * Math.sin(planet.angle * Math.PI / 180);
+            });
+
+            // Draw Sun
+            drawSun(sun);
+
+            // Draw Planets
+            planets.forEach(planet => {
+                drawPlanet(planet);
+
+                // Planet Labels
+                drawText(planet.name, planet.x, planet.y + planet.radius + 15);
+            });
+
+            // FPS and Earth Day Display
+            ctx.font = '14px Arial';
+            ctx.fillStyle = 'black';
+            ctx.globalAlpha = 0.7;
+            ctx.beginPath();
+            ctx.roundRect(10, 10, 130, 65, 5);
+            ctx.fill();
+            ctx.closePath();
+
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'left';
+            ctx.fillText(`FPS: ${fps}`, 20, 30);
+            ctx.fillText(`AVG FPS: ${avgFps.toFixed(1)}`, 20, 50);
+            ctx.fillText(`Earth Day: ${earthDay}`, 20, 70);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.addEventListener('resize', update);
+
+        gameLoop(0); // Start the animation loop
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Solar System Animation</title>
+    <style>
+        /* Remove default margin and hide scrollbars */
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        // Global variables for main canvas and context.
+        var canvas, ctx, bgCanvas, bgCtx;
+        var centerX, centerY;
+        var scale = 1; // scaling factor for solar system
+        var simulationTime = 0; // simulation time in Earth days
+        var lastTime = performance.now();
+        var frameCount = 0, totalTime = 0, currentFPS = 0, avgFPS = 0;
+        var planetAngles = {}; // store computed angular positions from worker
+
+        // -------------------------------------------------------------------------
+        // Define celestial bodies: Sun and 9 planets.
+        // Each body has: name, radius (for drawing pre-rendered image), orbitRadius
+        // (distance from Sun, unscaled), orbital period (in Earth days) and its 4 colors.
+        var bodies = [
+            { name: "太阳", radius: 40, orbitRadius: 0, period: 0, colors: ["#f2831f", "#f15d22", "#d94125", "#a41d22"] },
+            { name: "水星", radius: 5, orbitRadius: 60, period: 88, colors: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"] },
+            { name: "金星", radius: 8, orbitRadius: 90, period: 225, colors: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"] },
+            { name: "地球", radius: 8, orbitRadius: 120, period: 365, colors: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"] },
+            { name: "火星", radius: 6, orbitRadius: 150, period: 687, colors: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"] },
+            { name: "木星", radius: 20, orbitRadius: 200, period: 4333, colors: ["#282411", "#c08137", "#bfb09c", "#a6705b"] },
+            { name: "土星", radius: 18, orbitRadius: 250, period: 10759, colors: ["#f3cf89", "#dab778", "#736b59", "#c1a480"] },
+            { name: "天王星", radius: 15, orbitRadius: 300, period: 30687, colors: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"] },
+            { name: "海王星", radius: 15, orbitRadius: 350, period: 60190, colors: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"] },
+            { name: "冥王星", radius: 4, orbitRadius: 400, period: 90465, colors: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"] }
+        ];
+
+        // Pre-rendered images for each celestial body.
+        var planetImages = {};
+
+        // -------------------------------------------------------------------------
+        // Create a pre-rendered image for a planet/star.
+        // The function uses a quadratic pixel fill by dividing the circle into 4
+        // quadrants and filling each quadrant with one of the provided colors.
+        function createPlanetImage(body) {
+            var diameter = body.radius * 2;
+            var offCanvas = document.createElement("canvas");
+            offCanvas.width = diameter;
+            offCanvas.height = diameter;
+            var offCtx = offCanvas.getContext("2d");
+
+            // Create a circular clipping region.
+            offCtx.beginPath();
+            offCtx.arc(body.radius, body.radius, body.radius, 0, Math.PI * 2);
+            offCtx.closePath();
+            offCtx.clip();
+
+            // Divide the circle area into 4 quadrants and fill them with colors.
+            var half = body.radius;
+            // Top-left quadrant
+            offCtx.fillStyle = body.colors[0];
+            offCtx.fillRect(0, 0, half, half);
+            // Top-right quadrant
+            offCtx.fillStyle = body.colors[1];
+            offCtx.fillRect(half, 0, half, half);
+            // Bottom-left quadrant
+            offCtx.fillStyle = body.colors[2];
+            offCtx.fillRect(0, half, half, half);
+            // Bottom-right quadrant
+            offCtx.fillStyle = body.colors[3];
+            offCtx.fillRect(half, half, half, half);
+
+            // Optionally, draw a subtle border.
+            offCtx.strokeStyle = "black";
+            offCtx.lineWidth = 1;
+            offCtx.beginPath();
+            offCtx.arc(body.radius, body.radius, body.radius - 0.5, 0, Math.PI * 2);
+            offCtx.closePath();
+            offCtx.stroke();
+
+            return offCanvas;
+        }
+
+        // Pre-render all celestial body images.
+        for (var i = 0; i < bodies.length; i++) {
+            planetImages[bodies[i].name] = createPlanetImage(bodies[i]);
+        }
+
+        // -------------------------------------------------------------------------
+        // Initialize main canvas and set its size to full screen.
+        function initCanvas() {
+            canvas = document.getElementById("canvas");
+            ctx = canvas.getContext("2d");
+            resizeCanvas();
+        }
+
+        // Resize canvas and update the center and scale factor to fit the outermost orbit.
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            centerX = canvas.width / 2;
+            centerY = canvas.height / 2;
+            // Find the maximum orbit among all bodies excluding the Sun.
+            var maxOrbit = 0;
+            for (var i = 0; i < bodies.length; i++) {
+                if (bodies[i].orbitRadius > maxOrbit) {
+                    maxOrbit = bodies[i].orbitRadius;
+                }
+            }
+            var margin = 50; // extra margin
+            var availableSpace = Math.min(centerX, centerY) - margin;
+            scale = availableSpace / maxOrbit;
+            generateBackground();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // -------------------------------------------------------------------------
+        // Generate an offscreen background canvas for static elements (orbit lines).
+        function generateBackground() {
+            bgCanvas = document.createElement("canvas");
+            bgCanvas.width = canvas.width;
+            bgCanvas.height = canvas.height;
+            bgCtx = bgCanvas.getContext("2d");
+
+            // Fill background with black to simulate space.
+            bgCtx.fillStyle = "black";
+            bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+            // Draw orbit circles for all planets (excluding the Sun).
+            bgCtx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+            bgCtx.lineWidth = 1;
+            for (var i = 0; i < bodies.length; i++) {
+                if (bodies[i].orbitRadius > 0) {
+                    bgCtx.beginPath();
+                    bgCtx.arc(centerX, centerY, bodies[i].orbitRadius * scale, 0, Math.PI * 2);
+                    bgCtx.closePath();
+                    bgCtx.stroke();
+                }
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Setup Web Worker for planet position calculations.
+        var worker;
+        function initWorker() {
+            var workerCode = `
+      onmessage = function(e) {
+        var data = e.data;
+        var simulationTime = data.simulationTime;
+        var planets = data.planets;
+        var results = [];
+        for (var i = 0; i < planets.length; i++) {
+          var planet = planets[i];
+          // Calculate angular position based on simulation time & orbital period.
+          var angle = (simulationTime / planet.period) * 2 * Math.PI;
+          results.push({ name: planet.name, angle: angle, orbitRadius: planet.orbitRadius, radius: planet.radius });
+        }
+        postMessage({ planetPositions: results });
+      };
+      `;
+            var blob = new Blob([workerCode], { type: "application/javascript" });
+            var blobURL = URL.createObjectURL(blob);
+            worker = new Worker(blobURL);
+            worker.onmessage = function (e) {
+                var data = e.data;
+                if (data.planetPositions) {
+                    for (var i = 0; i < data.planetPositions.length; i++) {
+                        var pos = data.planetPositions[i];
+                        planetAngles[pos.name] = pos.angle;
+                    }
+                }
+            };
+        }
+
+        // Send the current simulation time to the worker for updating positions.
+        function updateWorker(simulationTime) {
+            // Only send moving planets (i.e. those with orbitRadius > 0, excluding the Sun)
+            var movingPlanets = bodies.filter(function (body) {
+                return body.orbitRadius > 0;
+            }).map(function (body) {
+                return { name: body.name, orbitRadius: body.orbitRadius, period: body.period, radius: body.radius };
+            });
+            worker.postMessage({ simulationTime: simulationTime, planets: movingPlanets });
+        }
+
+        // -------------------------------------------------------------------------
+        // Draw the FPS/AVG FPS & Earth Day counter in the top-left corner.
+        function drawCounter() {
+            var counterText = "FPS: " + currentFPS.toFixed(1) + " | AVG FPS: " + avgFPS.toFixed(1) + " | Earth Day: " + Math.floor(simulationTime);
+            ctx.font = "16px Arial";
+            var textWidth = ctx.measureText(counterText).width;
+            var padding = 8;
+            var rectWidth = textWidth + padding * 2;
+            var rectHeight = 24;
+            // Draw a semi-transparent white rounded rectangle.
+            ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+            roundRect(ctx, 10, 10, rectWidth, rectHeight, 5, true, false);
+            // Draw black text.
+            ctx.fillStyle = "black";
+            ctx.fillText(counterText, 10 + padding, 10 + rectHeight - 6);
+        }
+
+        // Utility function for drawing a rounded rectangle.
+        function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+            if (typeof stroke === 'undefined') {
+                stroke = true;
+            }
+            if (typeof radius === 'undefined') {
+                radius = 5;
+            }
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+            if (fill) {
+                ctx.fill();
+            }
+            if (stroke) {
+                ctx.stroke();
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Animation loop using requestAnimationFrame.
+        function animate(now) {
+            var deltaTime = now - lastTime;
+            lastTime = now;
+            frameCount++;
+            totalTime += deltaTime;
+            currentFPS = 1000 / deltaTime;
+            avgFPS = (frameCount / totalTime) * 1000;
+            // Update simulation time: 1 second real time equals 10 Earth days.
+            simulationTime += (deltaTime / 1000) * 10;
+
+            // Request updated planet positions from the worker.
+            updateWorker(simulationTime);
+
+            // Draw the static background (orbits).
+            ctx.drawImage(bgCanvas, 0, 0);
+
+            // Draw the Sun at the center.
+            var sun = bodies[0];
+            var sunImage = planetImages[sun.name];
+            var sunDiameter = sun.radius * 2 * scale;
+            ctx.drawImage(sunImage, centerX - sun.radius * scale, centerY - sun.radius * scale, sunDiameter, sunDiameter);
+            // Draw label for the Sun.
+            ctx.font = "16px Arial";
+            ctx.fillStyle = "white";
+            ctx.textAlign = "center";
+            ctx.fillText("[" + sun.name + "]", centerX, centerY - sun.radius * scale - 10);
+
+            // Draw each planet.
+            for (var i = 1; i < bodies.length; i++) {
+                var planet = bodies[i];
+                var angle = planetAngles[planet.name] || 0;
+                var orbitR = planet.orbitRadius * scale;
+                // Calculate position on the orbit.
+                var x = centerX + orbitR * Math.cos(angle);
+                var y = centerY + orbitR * Math.sin(angle);
+                var planetImage = planetImages[planet.name];
+                var diameter = planet.radius * 2 * scale;
+                ctx.drawImage(planetImage, x - planet.radius * scale, y - planet.radius * scale, diameter, diameter);
+                // Draw label for the planet.
+                ctx.font = "16px Arial";
+                ctx.fillStyle = "white";
+                ctx.textAlign = "center";
+                ctx.fillText("[" + planet.name + "]", x, y - planet.radius * scale - 10);
+            }
+
+            // Draw the performance and simulation counter.
+            drawCounter();
+
+            requestAnimationFrame(animate);
+        }
+
+        // -------------------------------------------------------------------------
+        // Initialize canvas, worker, and start the animation when the window loads.
+        window.onload = function () {
+            initCanvas();
+            initWorker();
+            lastTime = performance.now();
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+
+</html>

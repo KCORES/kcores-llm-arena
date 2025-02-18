@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Constants
+        const G = 0.1; // Gravitational constant for simulation
+        const AU = 100; // Astronomical unit in pixels
+        const planets = [
+            { name: 'Mercury', color: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], distance: 0.39 * AU, size: 3, speed: 0.24 },
+            { name: 'Venus', color: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], distance: 0.72 * AU, size: 6, speed: 0.615 },
+            { name: 'Earth', color: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], distance: AU, size: 6, speed: 1 },
+            { name: 'Mars', color: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], distance: 1.52 * AU, size: 4, speed: 0.524 },
+            { name: 'Jupiter', color: ['#282411', '#c08137', '#bfb09c', '#a6705b'], distance: 5.2 * AU, size: 14, speed: 0.084 },
+            { name: 'Saturn', color: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], distance: 9.58 * AU, size: 12, speed: 0.034 },
+            { name: 'Uranus', color: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], distance: 19.22 * AU, size: 5, speed: 0.012 },
+            { name: 'Neptune', color: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], distance: 30.05 * AU, size: 5, speed: 0.006 },
+            { name: 'Pluto', color: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], distance: 39.48 * AU, size: 3, speed: 0.004 }
+        ];
+
+        let earthDays = 0;
+        let fps = 0;
+        let lastTime = 0;
+
+        function drawPlanet(planet, angle) {
+            const x = canvas.width / 2 + planet.distance * Math.cos(angle);
+            const y = canvas.height / 2 + planet.distance * Math.sin(angle);
+
+            // Draw orbit
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, planet.distance, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.stroke();
+
+            // Draw planet
+            ctx.beginPath();
+            ctx.arc(x, y, planet.size, 0, Math.PI * 2);
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, planet.size);
+            planet.color.forEach((color, index) => gradient.addColorStop(index / 4, color));
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Draw label
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText(planet.name, x - planet.size, y - planet.size);
+        }
+
+        function update() {
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            earthDays += deltaTime * 10; // 1 second = 10 Earth days
+            fps = Math.round(1 / deltaTime);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Sun
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, 20, 0, Math.PI * 2);
+            ctx.fillStyle = '#f2831f';
+            ctx.fill();
+
+            // Draw planets
+            planets.forEach((planet, index) => {
+                const angle = (earthDays * planet.speed) % (Math.PI * 2);
+                drawPlanet(planet, angle);
+            });
+
+            // Draw FPS and Earth Day counter
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(10, 10, 100, 50);
+            ctx.fillStyle = 'white';
+            ctx.fillText(`FPS: ${fps}`, 20, 30);
+            ctx.fillText(`AVG FPS: ${fps}`, 20, 45);
+            ctx.fillText(`Earth Day: ${Math.floor(earthDays)}`, 20, 60);
+
+            requestAnimationFrame(update);
+        }
+
+        update();
+    </script>
+</body>
+
+</html>

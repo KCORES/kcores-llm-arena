@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Solar System</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            color: black;
+            padding: 5px;
+            border-radius: 5px;
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarSystemCanvas"></canvas>
+    <div id="fps-counter">
+        FPS: <span id="fps">0</span><br>
+        AVG FPS: <span id="avgFps">0</span><br>
+        Earth Day: <span id="earthDay">0</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('solarSystemCanvas');
+        const ctx = canvas.getContext('2d');
+        const fpsDisplay = document.getElementById('fps');
+        const avgFpsDisplay = document.getElementById('avgFps');
+        const earthDayDisplay = document.getElementById('earthDay');
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+        let earthDays = 0;
+        let lastTime = 0;
+        let framesThisSecond = 0;
+        let lastFpsUpdate = 0;
+        let fps = 0;
+        let avgFpsSum = 0;
+        let avgFpsCount = 0;
+        let avgFps = 0;
+
+
+        // Planet Data
+        const sun = {
+            name: "Sun",
+            radius: 50,
+            colorPalette: ["#f2831f", "#f15d22", "#d94125", "#a41d22"],
+            orbitRadius: 0,
+            speed: 0,
+            angle: 0
+        };
+
+        const planets = [
+            {
+                name: "Mercury",
+                radius: 5,
+                colorPalette: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"],
+                orbitRadius: 70,
+                speed: 4.147, // relative to earth
+                angle: 0
+            },
+            {
+                name: "Venus",
+                radius: 8,
+                colorPalette: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"],
+                orbitRadius: 110,
+                speed: 1.62,
+                angle: 0
+            },
+            {
+                name: "Earth",
+                radius: 9,
+                colorPalette: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"],
+                orbitRadius: 160,
+                speed: 1,
+                angle: 0
+            },
+            {
+                name: "Mars",
+                radius: 6,
+                colorPalette: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"],
+                orbitRadius: 210,
+                speed: 0.532,
+                angle: 0
+            },
+            {
+                name: "Jupiter",
+                radius: 25,
+                colorPalette: ["#282411", "#c08137", "#bfb09c", "#a6705b"],
+                orbitRadius: 300,
+                speed: 0.084,
+                angle: 0
+            },
+            {
+                name: "Saturn",
+                radius: 20,
+                colorPalette: ["#f3cf89", "#dab778", "#736b59", "#c1a480"],
+                orbitRadius: 400,
+                speed: 0.034,
+                angle: 0
+            },
+            {
+                name: "Uranus",
+                radius: 14,
+                colorPalette: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"],
+                orbitRadius: 480,
+                speed: 0.012,
+                angle: 0
+            },
+            {
+                name: "Neptune",
+                radius: 13,
+                colorPalette: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"],
+                orbitRadius: 550,
+                speed: 0.006,
+                angle: 0
+            },
+            {
+                name: "Pluto",
+                radius: 4,
+                colorPalette: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"],
+                orbitRadius: 600,
+                speed: 0.004,
+                angle: 0
+            }
+        ];
+
+
+        // Offscreen Canvas for Orbits
+        const orbitCanvas = document.createElement('canvas');
+        orbitCanvas.width = width;
+        orbitCanvas.height = height;
+        const orbitCtx = orbitCanvas.getContext('2d');
+        orbitCtx.translate(width / 2, height / 2);
+        orbitCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+
+        // Draw orbits on offscreen canvas
+        planets.forEach(planet => {
+            orbitCtx.beginPath();
+            orbitCtx.arc(0, 0, planet.orbitRadius, 0, 2 * Math.PI);
+            orbitCtx.stroke();
+        });
+
+        // Function to draw a pixelated planet
+        function drawPixelatedPlanet(ctx, x, y, radius, colorPalette) {
+            const pixelSize = radius / 4; // Divide into 4x4 pixels
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    ctx.fillStyle = colorPalette[(i * 4 + j) % colorPalette.length]; // Ensure index stays within bounds
+                    ctx.fillRect(x - radius / 2 + i * pixelSize, y - radius / 2 + j * pixelSize, pixelSize, pixelSize);
+                }
+            }
+        }
+
+        // Function to update and draw
+        function update(time) {
+            // Calculate delta time
+            let deltaTime = (time - lastTime) / 1000;
+            lastTime = time;
+
+            // FPS calculation
+            framesThisSecond++;
+            if (time - lastFpsUpdate > 1000) {
+                fps = framesThisSecond;
+                avgFpsSum += fps;
+                avgFpsCount++;
+                avgFps = Math.round(avgFpsSum / avgFpsCount);
+                framesThisSecond = 0;
+                lastFpsUpdate = time;
+            }
+
+            earthDays += deltaTime * 10 * 365;  //1 second = 10 earth days
+
+            // Update planet positions
+            planets.forEach(planet => {
+                planet.angle += planet.speed * deltaTime;
+            });
+
+
+            // Drawing
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw static orbits from offscreen canvas
+            ctx.drawImage(orbitCanvas, 0, 0);
+
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+
+            // Draw Sun
+            drawPixelatedPlanet(ctx, 0, 0, sun.radius, sun.colorPalette);
+
+            // Draw Planets
+            planets.forEach(planet => {
+                const x = planet.orbitRadius * Math.cos(planet.angle);
+                const y = planet.orbitRadius * Math.sin(planet.angle);
+
+                drawPixelatedPlanet(ctx, x, y, planet.radius, planet.colorPalette);
+
+                // Draw Planet Label
+                ctx.fillStyle = 'white';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(planet.name, x, y - planet.radius - 5); // Position label above the planet
+            });
+            ctx.restore();
+
+
+            // Update FPS counter
+            fpsDisplay.textContent = fps;
+            avgFpsDisplay.textContent = avgFps;
+            earthDayDisplay.textContent = Math.floor(earthDays);
+
+            requestAnimationFrame(update);
+        }
+
+
+        // Handle window resize
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            orbitCanvas.width = width;
+            orbitCanvas.height = height;
+
+            orbitCtx.clearRect(0, 0, orbitCanvas.width, orbitCanvas.height);
+            orbitCtx.translate(width / 2, height / 2);
+            orbitCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+
+            planets.forEach(planet => {
+                orbitCtx.beginPath();
+                orbitCtx.arc(0, 0, planet.orbitRadius, 0, 2 * Math.PI);
+                orbitCtx.stroke();
+            });
+
+            ctx.drawImage(orbitCanvas, 0, 0);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // Start animation
+        requestAnimationFrame(update);
+    </script>
+</body>
+
+</html>
+

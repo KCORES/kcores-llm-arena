@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Set Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="stats"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const stats = document.getElementById('stats');
+
+        // 设置全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 李白《静夜思》去重后的字符
+        const poem = "床前明月光疑是地上霜举头望低念故乡";
+        const characters = [...new Set(poem.split(''))].join('');
+
+        // 颜色从深到浅
+        const colors = [
+            '#0f2350', '#17184b', '#1c305c', '#192f60', '#223a70',
+            '#2a4073', '#274a78', '#4a488e', '#4d4398', '#5654a2',
+            '#706caa', '#68699b', '#867ba9', '#8491c3', '#bbbcde',
+            '#bbc8e6', '#ebf6f7', '#e8ecef', '#eaedf7', '#eaf4fc'
+        ].reverse();
+
+        // 动画参数
+        let frame = 0;
+        const maxFrames = 200;
+        let scale = 0.5; // 初始50%大小
+        const scaleIncrement = 0.005; // 每帧放大0.5%
+
+        // FPS 计算
+        let lastTime = performance.now();
+        let frameTimes = [];
+        let avgFps = 0;
+
+        // Mandelbrot Set 计算
+        function mandelbrot(x, y, maxIter) {
+            let real = x;
+            let imag = y;
+            for (let i = 0; i < maxIter; i++) {
+                const real2 = real * real;
+                const imag2 = imag * imag;
+                if (real2 + imag2 > 4) {
+                    return i;
+                }
+                imag = 2 * real * imag + y;
+                real = real2 - imag2 + x;
+            }
+            return maxIter;
+        }
+
+        // 检查是否在主心形或周期球中
+        function isInMainCardioidOrBulb(x, y) {
+            const q = (x - 0.25) * (x - 0.25) + y * y;
+            // Main cardioid
+            if (q * (q + (x - 0.25)) < y * y * 0.25) return true;
+            // Period-2 bulb
+            if ((x + 1) * (x + 1) + y * y < 0.0625) return true;
+            return false;
+        }
+
+        // 渲染函数
+        function draw() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '8px monospace';
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const pixelSize = 8;
+            const viewSize = Math.min(canvas.width, canvas.height) * scale;
+
+            // 计算可视区域
+            const realMin = -2.0 / scale;
+            const realMax = 1.0 / scale;
+            const imagMin = -1.5 / scale;
+            const imagMax = 1.5 / scale;
+
+            for (let py = 0; py < canvas.height; py += pixelSize) {
+                for (let px = 0; px < canvas.width; px += pixelSize) {
+                    const x = realMin + (px / canvas.width) * (realMax - realMin);
+                    const y = imagMin + (py / canvas.height) * (imagMax - imagMin);
+
+                    if (isInMainCardioidOrBulb(x, y)) continue;
+
+                    const value = mandelbrot(x, y, colors.length);
+                    if (value === colors.length) continue;
+
+                    const charIndex = value % characters.length;
+                    ctx.fillStyle = colors[value];
+                    ctx.fillText(
+                        characters[charIndex],
+                        centerX + (px - canvas.width / 2) * scale,
+                        centerY + (py - canvas.height / 2) * scale
+                    );
+                }
+            }
+
+            // 更新统计信息
+            const now = performance.now();
+            const delta = now - lastTime;
+            const fps = 1000 / delta;
+            frameTimes.push(fps);
+            if (frameTimes.length > maxFrames) frameTimes.shift();
+
+            if (frame === maxFrames - 1) {
+                avgFps = frameTimes.reduce((a, b) => a + b) / frameTimes.length;
+            }
+
+            stats.innerHTML = `
+                FPS: ${fps.toFixed(1)}<br>
+                AVG FPS: ${avgFps.toFixed(1)}<br>
+                CURRENT FRAME: ${frame + 1}/${maxFrames}
+            `;
+
+            lastTime = now;
+            frame++;
+            scale += scaleIncrement;
+
+            if (frame >= maxFrames) {
+                frame = 0;
+                scale = 0.5;
+                frameTimes = [];
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        // 启动动画
+        draw();
+    </script>
+</body>
+
+</html>

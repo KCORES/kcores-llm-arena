@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Solar System</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        #canvas {
+            display: block;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-family: sans-serif;
+            font-size: 12px;
+            padding: 5px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border-radius: 5px;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps-counter">FPS: 0 / AVG FPS: 0 / Earth Day: 0</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsCounter = document.getElementById('fps-counter');
+
+        let width, height;
+        let sunRadius = 50;
+        let planets = [];
+        let orbitCanvas;
+        let isDrawingOrbit = false;
+        let timeScale = 10 / 365; // 1 real second = 10 Earth days; Earth orbit = 365 days
+        let earthDay = 0;
+
+        // FPS相关
+        let fps = 0;
+        let avgFps = 0;
+        let frameCount = 0;
+        let lastTime = performance.now();
+        const fpsSamples = [];
+        const maxFpsSamples = 100;
+
+        // 星球颜色
+        const planetColors = {
+            sun: ['#f2831f', '#f15d22', '#d94125', '#a41d22'],
+            mercury: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'],
+            venus: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'],
+            earth: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'],
+            mars: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'],
+            jupiter: ['#282411', '#c08137', '#bfb09c', '#a6705b'],
+            saturn: ['#f3cf89', '#dab778', '#736b59', '#c1a480'],
+            uranus: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'],
+            neptune: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'],
+            pluto: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'],
+        };
+
+        // 星球信息，轨道半径是相对值，星球大小也是相对值
+        const planetData = [
+            { name: 'Mercury', radius: 70, size: 5, color: 'mercury', orbitDays: 88 }, // 轨道周期
+            { name: 'Venus', radius: 100, size: 7, color: 'venus', orbitDays: 225 },
+            { name: 'Earth', radius: 140, size: 8, color: 'earth', orbitDays: 365 },
+            { name: 'Mars', radius: 180, size: 6, color: 'mars', orbitDays: 687 },
+            { name: 'Jupiter', radius: 260, size: 18, color: 'jupiter', orbitDays: 4333 },
+            { name: 'Saturn', radius: 340, size: 16, color: 'saturn', orbitDays: 10759 },
+            { name: 'Uranus', radius: 420, size: 12, color: 'uranus', orbitDays: 30660 },
+            { name: 'Neptune', radius: 500, size: 11, color: 'neptune', orbitDays: 60190 },
+            { name: 'Pluto', radius: 580, size: 4, color: 'pluto', orbitDays: 90560 }
+        ];
+
+        // Web Worker，用于计算星球位置
+        let worker;
+
+        // 初始化Web Worker
+        function initWorker() {
+            worker = new Worker(URL.createObjectURL(new Blob([`
+        onmessage = function(e) {
+            const { planets, timeScale, earthDay, width, height, sunRadius } = e.data;
+            const updatedPlanets = planets.map(planet => {
+                const angle = (earthDay * timeScale / planet.orbitDays) * 2 * Math.PI;
+                const x = width / 2 + planet.radius * Math.cos(angle);
+                const y = height / 2 + planet.radius * Math.sin(angle);
+                return { ...planet, x, y, angle }; // 存储角度
+            });
+
+            postMessage({ planets: updatedPlanets });
+        }
+    `], { type: 'application/javascript' })));
+
+            worker.onmessage = function (e) {
+                planets = e.data.planets;
+            };
+        }
+
+        function resizeCanvas() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+
+            if (orbitCanvas) {
+                orbitCanvas.width = width;
+                orbitCanvas.height = height;
+            }
+            drawOrbits(); // 重新绘制轨道
+        }
+
+        function drawOrbit(radius) {
+            ctx.beginPath();
+            ctx.arc(width / 2, height / 2, radius, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.stroke();
+        }
+
+        function drawOrbits() {
+            if (!orbitCanvas) {
+                orbitCanvas = document.createElement('canvas');
+                orbitCanvas.width = width;
+                orbitCanvas.height = height;
+                document.body.appendChild(orbitCanvas); // 临时添加，保证绘制
+            }
+            const orbitCtx = orbitCanvas.getContext('2d');
+            orbitCtx.clearRect(0, 0, width, height);
+
+            planetData.forEach(planet => {
+                drawOrbitOnCanvas(orbitCtx, planet.radius);
+            });
+
+            isDrawingOrbit = false;
+        }
+
+        function drawOrbitOnCanvas(ctx, radius) {
+            ctx.beginPath();
+            ctx.arc(width / 2, height / 2, radius, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.stroke();
+        }
+
+        function drawPlanet(planet) {
+            ctx.save();
+            ctx.translate(planet.x, planet.y);
+
+            // 旋转使得正面朝向屏幕
+            const angle = Math.atan2(planet.y - height / 2, planet.x - width / 2) + Math.PI / 2; // 计算并调整角度
+            ctx.rotate(angle);
+
+            ctx.beginPath();
+            const colors = planetColors[planet.color];
+            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, planet.size); // 星球中心
+            gradient.addColorStop(0, colors[0]);
+            gradient.addColorStop(0.3, colors[1]);
+            gradient.addColorStop(0.6, colors[2]);
+            gradient.addColorStop(1, colors[3]);
+            ctx.fillStyle = gradient;
+            ctx.arc(0, 0, planet.size, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.closePath();
+            ctx.restore();
+
+            // 绘制标签，始终面向相机
+            ctx.save();
+            ctx.translate(planet.x, planet.y);
+            ctx.fillStyle = 'white';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+
+            // 调整文字角度
+            ctx.rotate(-angle);
+
+            ctx.fillText(planet.name, 0, planet.size + 15); // 调整标签位置
+            ctx.restore();
+        }
+
+
+        function drawSun() {
+            const colors = planetColors.sun;
+            const gradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, sunRadius);
+            gradient.addColorStop(0, colors[0]);
+            gradient.addColorStop(0.3, colors[1]);
+            gradient.addColorStop(0.6, colors[2]);
+            gradient.addColorStop(1, colors[3]);
+
+            ctx.beginPath();
+            ctx.fillStyle = gradient;
+            ctx.arc(width / 2, height / 2, sunRadius, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function updatePlanets() {
+            worker.postMessage({ planets, timeScale, earthDay, width, height, sunRadius });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(orbitCanvas, 0, 0); // 绘制轨道线
+            drawSun();
+
+            planets.forEach(planet => {
+                drawPlanet(planet);
+            });
+        }
+
+        function initPlanets() {
+            planets = planetData.map(planet => ({
+                ...planet,
+                x: 0,
+                y: 0,
+                angle: 0
+            }));
+        }
+
+        function updateFps() {
+            const now = performance.now();
+            const deltaTime = now - lastTime;
+            lastTime = now;
+
+            fps = Math.round(1000 / deltaTime);
+            fpsSamples.push(fps);
+            if (fpsSamples.length > maxFpsSamples) {
+                fpsSamples.shift();
+            }
+            avgFps = Math.round(fpsSamples.reduce((sum, fps) => sum + fps, 0) / fpsSamples.length);
+            fpsCounter.textContent = `FPS: ${fps} / AVG FPS: ${avgFps} / Earth Day: ${Math.floor(earthDay)}`;
+        }
+
+
+        function animate() {
+            updateFps();
+            earthDay++;
+            updatePlanets();
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+
+        window.onload = () => {
+            resizeCanvas();
+            initPlanets();
+            initWorker();
+            drawOrbits();  // 确保在resize之后调用
+            requestAnimationFrame(animate);
+        };
+
+        window.onresize = resizeCanvas;
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const workerScript = `
+            self.onmessage = function(e) {
+                const planets = e.data.planets;
+                const timeDelta = e.data.timeDelta;
+                
+                planets.forEach(planet => {
+                    if(planet.name !== 'Sun') {
+                        planet.angle += (Math.PI * 2) / (planet.orbitalPeriod / 10) * (timeDelta / 1000);
+                    }
+                });
+                
+                self.postMessage(planets);
+            };
+        `;
+
+        // 全屏设置
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 天体数据
+        const planets = [
+            { name: 'Sun', colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'], size: 40, orbit: 0, angle: 0, orbitalPeriod: 0 },
+            { name: 'Mercury', colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], size: 8, orbit: 70, angle: 0, orbitalPeriod: 88 },
+            { name: 'Venus', colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], size: 12, orbit: 100, angle: 0, orbitalPeriod: 225 },
+            { name: 'Earth', colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], size: 13, orbit: 150, angle: 0, orbitalPeriod: 365 },
+            { name: 'Mars', colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], size: 10, orbit: 200, angle: 0, orbitalPeriod: 687 },
+            { name: 'Jupiter', colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'], size: 30, orbit: 280, angle: 0, orbitalPeriod: 4333 },
+            { name: 'Saturn', colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], size: 25, orbit: 360, angle: 0, orbitalPeriod: 10759 },
+            { name: 'Uranus', colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], size: 18, orbit: 420, angle: 0, orbitalPeriod: 30685 },
+            { name: 'Neptune', colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], size: 17, orbit: 480, angle: 0, orbitalPeriod: 60190 },
+            { name: 'Pluto', colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], size: 5, orbit: 520, angle: 0, orbitalPeriod: 90560 }
+        ];
+
+        // 创建离屏Canvas
+        const offscreenCanvas = document.createElement('canvas');
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+
+        // 生成星球纹理
+        function createTexture(colors, size) {
+            const textureCanvas = document.createElement('canvas');
+            textureCanvas.width = textureCanvas.height = size * 2;
+            const tCtx = textureCanvas.getContext('2d');
+
+            for (let x = 0; x < size * 2; x++) {
+                for (let y = 0; y < size * 2; y++) {
+                    tCtx.fillStyle = colors[Math.floor(Math.random() * 4)];
+                    tCtx.fillRect(x, y, 1, 1);
+                }
+            }
+            return textureCanvas;
+        }
+
+        // 性能监测
+        let fps = 0;
+        let avgFps = 0;
+        let frameTimes = [];
+        let days = 0;
+
+        // Web Worker
+        const blob = new Blob([workerScript], { type: 'application/javascript' });
+        const worker = new Worker(URL.createObjectURL(blob));
+
+        // 初始化
+        let lastTime = performance.now();
+        let textures = new Map();
+
+        planets.forEach(planet => {
+            textures.set(planet.name, createTexture(planet.colors, planet.size));
+        });
+
+        function draw() {
+            const now = performance.now();
+            const deltaTime = now - lastTime;
+            lastTime = now;
+
+            // 更新性能指标
+            frameTimes.push(deltaTime);
+            if (frameTimes.length > 100) frameTimes.shift();
+
+            fps = Math.round(1000 / deltaTime);
+            avgFps = Math.round(1000 / (frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length));
+            days += deltaTime * 10 / 1000;
+
+            // 使用离屏Canvas绘制轨道
+            offscreenCanvas.width = canvas.width;
+            offscreenCanvas.height = canvas.height;
+            offscreenCtx.translate(canvas.width / 2, canvas.height / 2);
+
+            planets.forEach(planet => {
+                if (planet.orbit > 0) {
+                    offscreenCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+                    offscreenCtx.beginPath();
+                    offscreenCtx.arc(0, 0, planet.orbit, 0, Math.PI * 2);
+                    offscreenCtx.stroke();
+                }
+            });
+
+            worker.postMessage({
+                planets: JSON.parse(JSON.stringify(planets)),
+                timeDelta: deltaTime
+            });
+        }
+
+        worker.onmessage = function (e) {
+            const updatedPlanets = e.data;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制轨道
+            ctx.drawImage(offscreenCanvas, 0, 0);
+
+            // 绘制天体
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+
+            updatedPlanets.forEach(planet => {
+                ctx.save();
+                if (planet.name !== 'Sun') {
+                    ctx.rotate(planet.angle);
+                    ctx.translate(planet.orbit, 0);
+                }
+
+                // 绘制星球
+                const pattern = ctx.createPattern(textures.get(planet.name), 'repeat');
+                ctx.beginPath();
+                ctx.arc(0, 0, planet.size, 0, Math.PI * 2);
+                ctx.fillStyle = pattern;
+                ctx.fill();
+
+                // 绘制标签
+                if (planet.name !== 'Sun') {
+                    ctx.rotate(-planet.angle);
+                    ctx.fillStyle = 'black';
+                    ctx.font = '12px Arial';
+                    ctx.fillText(`[${planet.name}]`, 0, -planet.size - 10);
+                }
+
+                ctx.restore();
+            });
+
+            ctx.restore();
+
+            // 绘制性能计数器
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.beginPath();
+            ctx.roundRect(10, 10, 150, 80, 5);
+            ctx.fill();
+
+            ctx.fillStyle = 'black';
+            ctx.font = '14px Arial';
+            ctx.textBaseline = 'top';
+            ctx.fillText(`FPS: ${fps}`, 20, 20);
+            ctx.fillText(`AVG FPS: ${avgFps}`, 20, 40);
+            ctx.fillText(`Earth Day: ${days.toFixed(1)}`, 20, 60);
+
+            requestAnimationFrame(draw);
+        };
+
+        draw();
+    </script>
+</body>
+
+</html>

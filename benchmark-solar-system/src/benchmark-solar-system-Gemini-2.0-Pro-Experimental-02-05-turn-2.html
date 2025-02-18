@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 5px;
+            color: black;
+            font-family: sans-serif;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarCanvas"></canvas>
+    <div id="info">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>Earth Day: <span id="earthDay">0</span></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('solarCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+        // Time compression: 1 second = 10 Earth days
+        const timeScale = 10;
+
+        // Planet data (relative sizes and distances, colors, names)
+        const planetsData = [
+            { name: 'Sun', radius: 30, colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'], orbitalRadius: 0, period: 0 }, // Sun doesn't orbit
+            { name: 'Mercury', radius: 4, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], orbitalRadius: 60, period: 88 },
+            { name: 'Venus', radius: 9, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], orbitalRadius: 90, period: 225 },
+            { name: 'Earth', radius: 10, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], orbitalRadius: 130, period: 365 },
+            { name: 'Mars', radius: 6, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], orbitalRadius: 170, period: 687 },
+            { name: 'Jupiter', radius: 22, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'], orbitalRadius: 240, period: 4333 },
+            { name: 'Saturn', radius: 18, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], orbitalRadius: 320, period: 10759 },
+            { name: 'Uranus', radius: 15, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], orbitalRadius: 400, period: 30687 },
+            { name: 'Neptune', radius: 14, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], orbitalRadius: 480, period: 60190 },
+            { name: 'Pluto', radius: 3, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], orbitalRadius: 540, period: 90560 }
+        ];
+
+        // --- Offscreen Canvas for Orbits ---
+        const orbitCanvas = document.createElement('canvas');
+        orbitCanvas.width = width;
+        orbitCanvas.height = height;
+        const orbitCtx = orbitCanvas.getContext('2d');
+
+        function drawOrbits() {
+            orbitCtx.clearRect(0, 0, width, height);
+            orbitCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            for (const planet of planetsData) {
+                if (planet.orbitalRadius > 0) {
+                    orbitCtx.beginPath();
+                    orbitCtx.arc(width / 2, height / 2, planet.orbitalRadius, 0, 2 * Math.PI);
+                    orbitCtx.stroke();
+                }
+            }
+        }
+
+        drawOrbits(); // Draw orbits on the offscreen canvas initially
+
+
+        // --- Pixelated Planet Drawing ---
+        function drawPixelatedPlanet(x, y, radius, colors) {
+            for (let i = -radius; i <= radius; i++) {
+                for (let j = -radius; j <= radius; j++) {
+                    if (i * i + j * j <= radius * radius) {
+                        const color = colors[Math.floor(Math.random() * colors.length)];
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x + i, y + j, 1, 1);
+                    }
+                }
+            }
+        }
+
+
+        // --- Web Worker for Position Calculation ---
+        const worker = new Worker(URL.createObjectURL(new Blob([`
+            onmessage = function(e) {
+                const planetsData = e.data.planetsData;
+                const time = e.data.time;
+                const positions = [];
+
+                for (const planet of planetsData) {
+                    let angle = 0;
+                    if (planet.period > 0) {
+                        angle = (time / planet.period) * 2 * Math.PI;
+                    }
+                    const x = planet.orbitalRadius * Math.cos(angle);
+                    const y = planet.orbitalRadius * Math.sin(angle);
+                    positions.push({x, y});
+                }
+                postMessage(positions);
+            }
+        `], { type: 'application/javascript' })));
+
+        let planetPositions = [];
+
+        worker.onmessage = function (e) {
+            planetPositions = e.data;
+            requestAnimationFrame(draw); // Request the next frame after positions are calculated
+        };
+
+        // --- FPS and Earth Day Calculation ---
+        let lastTime = 0;
+        let frames = 0;
+        let totalFrames = 0;
+        let totalTime = 0;
+        let earthDay = 0;
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw the orbits from the offscreen canvas
+            ctx.drawImage(orbitCanvas, 0, 0);
+
+
+            // Draw planets and labels based on calculated positions
+            for (let i = 0; i < planetsData.length; i++) {
+                if (planetPositions[i]) {
+                    const x = width / 2 + planetPositions[i].x;
+                    const y = height / 2 + planetPositions[i].y;
+                    drawPixelatedPlanet(x, y, planetsData[i].radius, planetsData[i].colors);
+
+                    // Draw labels
+                    ctx.fillStyle = 'white';
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(planetsData[i].name, x, y + planetsData[i].radius + 15);
+                }
+            }
+
+
+            // Calculate FPS and Earth Day
+            const now = performance.now();
+            const deltaTime = (now - lastTime) / 1000; // Convert to seconds
+            lastTime = now;
+
+            frames++;
+            totalFrames++;
+            totalTime += deltaTime;
+            earthDay += timeScale * deltaTime;
+
+            if (deltaTime > 0) {
+                const fps = 1 / deltaTime;
+                document.getElementById('fps').textContent = fps.toFixed(1);
+                document.getElementById('avgFps').textContent = (totalFrames / totalTime).toFixed(1);
+            }
+
+            document.getElementById('earthDay').textContent = earthDay.toFixed(0);
+        }
+
+
+
+        let startTime = performance.now();
+
+        function animate() {
+            const currentTime = performance.now();
+            const elapsedEarthDays = (currentTime - startTime) / 1000 * timeScale;  // time since start in earth days
+
+            // Send data to the worker for position calculation
+            worker.postMessage({ planetsData, time: elapsedEarthDays });  //Use elapsedEarthDays as time input
+            // The draw() function is called from the worker's onmessage handler
+        }
+
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            orbitCanvas.width = width;
+            orbitCanvas.height = height;
+            drawOrbits(); // Redraw orbits on resize
+
+        });
+
+
+        animate(); // Start the animation loop
+
+    </script>
+</body>
+
+</html>

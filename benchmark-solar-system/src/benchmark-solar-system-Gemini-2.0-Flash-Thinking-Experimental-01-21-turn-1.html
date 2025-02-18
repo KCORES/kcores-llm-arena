@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        /* 移除body边距，隐藏溢出，设置背景色为黑色 */
+        canvas {
+            display: block;
+        }
+
+        /* 让canvas成为块级元素 */
+        #fpsCounter {
+            /* FPS计数器样式 */
+            position: fixed;
+            /* 固定定位 */
+            top: 10px;
+            /* 距顶部10px */
+            left: 10px;
+            /* 距左侧10px */
+            padding: 5px 10px;
+            /* 内边距 */
+            font-size: 14px;
+            /* 字体大小 */
+            color: black;
+            /* 文字颜色黑色 */
+            background-color: rgba(255, 255, 255, 0.7);
+            /* 半透明白色背景 */
+            border-radius: 5px;
+            /* 圆角边框 */
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="solarSystemCanvas"></canvas>
+    <div id="fpsCounter">
+        <span id="fps">FPS: --</span> |
+        <span id="avgFps">AVG FPS: --</span> |
+        <span id="earthDays">Earth Day: 0</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('solarSystemCanvas');
+        const ctx = canvas.getContext('2d');
+        const fpsDisplay = document.getElementById('fps');
+        const avgFpsDisplay = document.getElementById('avgFps');
+        const earthDaysDisplay = document.getElementById('earthDays');
+
+        canvas.width = window.innerWidth; // 设置canvas宽度为窗口宽度
+        canvas.height = window.innerHeight; // 设置canvas高度为窗口高度
+
+        const centerX = canvas.width / 2; // 中心X坐标
+        const centerY = canvas.height / 2; // 中心Y坐标
+
+        // 星球数据，包括颜色，大小，距离太阳的距离，公转周期（地球日）
+        const planetsData = [
+            { name: "太阳", colors: ["#f2831f", "#f15d22", "#d94125", "#a41d22"], size: 50, distance: 0, period: 0 },
+            { name: "水星", colors: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"], size: 5, distance: 60, period: 88 },
+            { name: "金星", colors: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"], size: 10, distance: 90, period: 225 },
+            { name: "地球", colors: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"], size: 10, distance: 130, period: 365 },
+            { name: "火星", colors: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"], size: 8, distance: 170, period: 687 },
+            { name: "木星", colors: ["#282411", "#c08137", "#bfb09c", "#a6705b"], size: 30, distance: 250, period: 4333 },
+            { name: "土星", colors: ["#f3cf89", "#dab778", "#736b59", "#c1a480"], size: 25, distance: 350, period: 10759 },
+            { name: "天王星", colors: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"], size: 18, distance: 450, period: 30687 },
+            { name: "海王星", colors: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"], size: 17, distance: 530, period: 60190 },
+            { name: "冥王星", colors: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"], size: 4, distance: 600, period: 90560 }
+        ];
+
+        const numColorsPerPlanet = 4; // 每个星球的颜色数量
+        const earthDaysPerSecond = 10; // 时间压缩率：1秒=10地球日
+        let earthDays = 0; // 地球日计数器
+        let lastFrameTime = 0; // 上一帧的时间
+        let currentFps = 0; // 当前FPS
+        let avgFps = 0; // 平均FPS
+        let totalFrames = 0; // 总帧数
+        const fpsHistory = []; // FPS历史记录
+
+
+        // 创建离屏canvas用于绘制静态轨道线
+        const offScreenCanvas = document.createElement('canvas');
+        const offScreenCtx = offScreenCanvas.getContext('2d');
+        offScreenCanvas.width = canvas.width;
+        offScreenCanvas.height = canvas.height;
+
+        // 绘制轨道线到离屏canvas
+        function drawOrbits() {
+            offScreenCtx.clearRect(0, 0, offScreenCanvas.width, offScreenCanvas.height); // 清空离屏canvas
+            offScreenCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; // 半透明白色轨道线
+            planetsData.forEach(planet => {
+                if (planet.name !== "太阳") {
+                    offScreenCtx.beginPath();
+                    offScreenCtx.arc(centerX, centerY, planet.distance, 0, Math.PI * 2);
+                    offScreenCtx.stroke();
+                }
+            });
+        }
+
+        // 绘制像素化的星球
+        function drawPixelPlanet(ctx, x, y, size, colors) {
+            const pixelSize = Math.ceil(size / 10); // 像素大小，根据星球大小调整像素密度
+            for (let i = 0; i < size; i++) {
+                for (let j = 0; j < size; j++) {
+                    if (Math.sqrt((i - size / 2) ** 2 + (j - size / 2) ** 2) < size / 2) { // 近似圆形
+                        const colorIndex = (i + j) % numColorsPerPlanet; // 循环使用颜色
+                        ctx.fillStyle = colors[colorIndex];
+                        ctx.fillRect(x + i - size / 2, y + j - size / 2, pixelSize, pixelSize);
+                    }
+                }
+            }
+        }
+
+        // 绘制星球标签
+        function drawPlanetLabel(ctx, planet, x, y) {
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(planet.name, x, y - planet.size / 2 - 10); // 标签在星球上方
+        }
+
+        // 计算星球位置
+        function getPlanetPosition(planet, time) {
+            if (planet.period === 0) return { x: centerX, y: centerY }; // 太阳位置固定
+            const angle = (time / planet.period) * 2 * Math.PI; // 角度随时间变化
+            const x = centerX + planet.distance * Math.cos(angle - Math.PI / 2); // 减去PI/2调整初始位置
+            const y = centerY + planet.distance * Math.sin(angle - Math.PI / 2);
+            return { x, y };
+        }
+
+        // 动画循环
+        function animate(currentTime) {
+            const deltaTime = currentTime - lastFrameTime;
+            lastFrameTime = currentTime;
+            currentFps = 1000 / deltaTime;
+            fpsHistory.push(currentFps);
+            if (fpsHistory.length > 100) fpsHistory.shift(); // 保留最近100帧的FPS记录
+            avgFps = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+
+
+            earthDays += earthDaysPerSecond * deltaTime / 1000; // 累加地球日
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // 清空画布
+
+            ctx.drawImage(offScreenCanvas, 0, 0); // 绘制静态轨道线
+
+            planetsData.forEach(planet => {
+                const position = getPlanetPosition(planet, earthDays);
+                drawPixelPlanet(ctx, position.x, position.y, planet.size, planet.colors);
+                drawPlanetLabel(ctx, planet, position.x, position.y);
+            });
+
+            // 更新FPS和地球日计数器
+            fpsDisplay.textContent = `FPS: ${currentFps.toFixed(0)}`;
+            avgFpsDisplay.textContent = `AVG FPS: ${avgFps.toFixed(0)}`;
+            earthDaysDisplay.textContent = `Earth Day: ${Math.floor(earthDays)}`;
+
+
+            requestAnimationFrame(animate); // 请求下一帧动画
+        }
+
+        drawOrbits(); // 初始化绘制轨道线到离屏canvas
+        animate(0); // 启动动画循环
+    </script>
+
+</body>
+
+</html>

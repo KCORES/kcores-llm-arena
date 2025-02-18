@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Constants
+        const G = 0.1; // Gravitational constant for simulation
+        const AU = 100; // Astronomical unit in pixels
+        const planets = [
+            { name: 'Mercury', color: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], distance: 0.39 * AU, size: 3, speed: 0.24 },
+            { name: 'Venus', color: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], distance: 0.72 * AU, size: 6, speed: 0.615 },
+            { name: 'Earth', color: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], distance: AU, size: 6, speed: 1 },
+            { name: 'Mars', color: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], distance: 1.52 * AU, size: 4, speed: 0.524 },
+            { name: 'Jupiter', color: ['#282411', '#c08137', '#bfb09c', '#a6705b'], distance: 5.2 * AU, size: 14, speed: 0.084 },
+            { name: 'Saturn', color: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], distance: 9.58 * AU, size: 12, speed: 0.034 },
+            { name: 'Uranus', color: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], distance: 19.22 * AU, size: 8, speed: 0.012 },
+            { name: 'Neptune', color: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], distance: 30.05 * AU, size: 8, speed: 0.006 },
+            { name: 'Pluto', color: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], distance: 39.48 * AU, size: 4, speed: 0.004 }
+        ];
+
+        let earthDays = 0;
+        let fps = 0;
+        let lastTime = 0;
+
+        // Draw the sun
+        function drawSun() {
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, 30, 0, Math.PI * 2);
+            ctx.fillStyle = '#f2831f';
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        // Draw planets
+        function drawPlanets(time) {
+            planets.forEach((planet, index) => {
+                const angle = time * planet.speed;
+                const x = canvas.width / 2 + planet.distance * Math.cos(angle);
+                const y = canvas.height / 2 + planet.distance * Math.sin(angle);
+
+                // Draw orbit
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2, canvas.height / 2, planet.distance, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.stroke();
+                ctx.closePath();
+
+                // Draw planet
+                ctx.beginPath();
+                ctx.arc(x, y, planet.size, 0, Math.PI * 2);
+                ctx.fillStyle = planet.color[0];
+                ctx.fill();
+                ctx.closePath();
+
+                // Draw planet label
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText(planet.name, x - planet.size, y - planet.size);
+            });
+        }
+
+        // Draw FPS and Earth Day counter
+        function drawCounter() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(10, 10, 120, 50);
+            ctx.fillStyle = 'white';
+            ctx.fillText(`FPS: ${fps.toFixed(1)}`, 20, 30);
+            ctx.fillText(`AVG FPS: ${fps.toFixed(1)}`, 20, 45);
+            ctx.fillText(`Earth Day: ${earthDays}`, 20, 60);
+        }
+
+        // Animation loop
+        function animate(time) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawSun();
+            drawPlanets(time / 1000);
+            drawCounter();
+
+            // FPS calculation
+            if (lastTime) {
+                fps = 1000 / (time - lastTime);
+                earthDays += 1 / 10; // 1 second = 10 Earth days
+            }
+            lastTime = time;
+
+            requestAnimationFrame(animate);
+        }
+
+        // Start animation
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

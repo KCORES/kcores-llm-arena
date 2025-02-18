@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mandelbrot ASCII Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            color: #000;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps-counter"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsCounter = document.getElementById('fps-counter');
+
+        // 全屏设置
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 李白《静夜思》去重后的字符
+        const poem = "床前明月光疑是地上霜举头望低思故乡";
+        const chars = [...new Set(poem.split(''))].join('');
+
+        // 颜色数组（从深到浅）
+        const colors = [
+            '#0f2350', '#17184b', '#1c305c', '#192f60', '#223a70',
+            '#2a4073', '#274a78', '#4a488e', '#4d4398', '#5654a2',
+            '#706caa', '#68699b', '#867ba9', '#8491c3', '#bbbcde',
+            '#bbc8e6', '#ebf6f7', '#e8ecef', '#eaedf7', '#eaf4fc'
+        ];
+
+        // 动画参数
+        const MAX_ITERATIONS = 200;
+        const FONT_SIZE = 8;
+        let frame = 0;
+        let scale = 0.5; // 初始50%
+        let lastTime = performance.now();
+        let fpsValues = [];
+        let avgFPS = 0;
+
+        // Mandelbrot计算
+        function mandelbrot(x, y) {
+            let real = x;
+            let imag = y;
+            for (let i = 0; i < colors.length; i++) {
+                const real2 = real * real;
+                const imag2 = imag * imag;
+                if (real2 + imag2 > 4) return i;
+                imag = 2 * real * imag + y;
+                real = real2 - imag2 + x;
+            }
+            return -1; // 在集合内部
+        }
+
+        // 检查是否在主心形或周期球内
+        function isInMainBulbs(x, y) {
+            // 主心形
+            const q = (x - 0.25) * (x - 0.25) + y * y;
+            if (q * (q + (x - 0.25)) < y * y / 4) return true;
+
+            // 周期2球
+            const dist = (x + 1) * (x + 1) + y * y;
+            if (dist < 0.0625) return true;
+
+            return false;
+        }
+
+        // 主渲染函数
+        function draw() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = `${FONT_SIZE}px monospace`;
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const zoom = scale * Math.min(canvas.width, canvas.height) / 4;
+
+            // 使用Web Workers优化性能
+            const workerCount = Math.min(8, navigator.hardwareConcurrency || 4);
+            const chunkHeight = Math.ceil(canvas.height / workerCount);
+            const workers = [];
+            let completed = 0;
+
+            for (let w = 0; w < workerCount; w++) {
+                const worker = new Worker(URL.createObjectURL(new Blob([`
+                    self.onmessage = function(e) {
+                        const {startY, endY, width, centerX, centerY, zoom, chars, colors} = e.data;
+                        const result = [];
+                        
+                        for (let y = startY; y < endY; y++) {
+                            for (let x = 0; x < width; x++) {
+                                const real = (x - centerX) / zoom - 0.5; // 中心调整到交界处
+                                const imag = (y - centerY) / zoom;
+                                if (isInMainBulbs(real, imag)) {
+                                    result.push({x, y, char: null});
+                                    continue;
+                                }
+                                const iter = mandelbrot(real, imag);
+                                if (iter === -1) {
+                                    result.push({x, y, char: null});
+                                } else {
+                                    const char = chars[iter % chars.length];
+                                    const color = colors[iter];
+                                    result.push({x, y, char, color});
+                                }
+                            }
+                        }
+                        self.postMessage(result);
+                    };
+                    
+                    function mandelbrot(x, y) {
+                        let real = x;
+                        let imag = y;
+                        for (let i = 0; i < ${colors.length}; i++) {
+                            const real2 = real * real;
+                            const imag2 = imag * imag;
+                            if (real2 + imag2 > 4) return i;
+                            imag = 2 * real * imag + y;
+                            real = real2 - imag2 + x;
+                        }
+                        return -1;
+                    }
+                    
+                    function isInMainBulbs(x, y) {
+                        const q = (x - 0.25) * (x - 0.25) + y * y;
+                        if (q * (q + (x - 0.25)) < y * y / 4) return true;
+                        const dist = (x + 1) * (x + 1) + y * y;
+                        if (dist < 0.0625) return true;
+                        return false;
+                    }
+                `], { type: 'application/javascript' })));
+
+                const startY = w * chunkHeight;
+                const endY = Math.min((w + 1) * chunkHeight, canvas.height);
+
+                worker.onmessage = (e) => {
+                    const result = e.data;
+                    for (const { x, y, char, color } of result) {
+                        if (char) {
+                            ctx.fillStyle = color;
+                            ctx.fillText(char, x * FONT_SIZE, y * FONT_SIZE);
+                        }
+                    }
+                    completed++;
+                    if (completed === workerCount) {
+                        updateFPS();
+                        nextFrame();
+                    }
+                };
+
+                worker.postMessage({
+                    startY,
+                    endY,
+                    width: canvas.width,
+                    centerX,
+                    centerY,
+                    zoom,
+                    chars,
+                    colors
+                });
+                workers.push(worker);
+            }
+        }
+
+        function updateFPS() {
+            const now = performance.now();
+            const fps = 1000 / (now - lastTime);
+            lastTime = now;
+
+            fpsValues.push(fps);
+            if (frame === MAX_ITERATIONS - 1) {
+                avgFPS = fpsValues.reduce((a, b) => a + b) / fpsValues.length;
+                fpsValues = [];
+            }
+
+            fpsCounter.textContent =
+                `FPS: ${fps.toFixed(1)}\n` +
+                `AVG FPS: ${avgFPS.toFixed(1)}\n` +
+                `CURRENT FRAME: ${frame + 1}/${MAX_ITERATIONS}`;
+        }
+
+        function nextFrame() {
+            frame++;
+            scale *= 1.005; // 每帧放大0.5%
+
+            if (frame >= MAX_ITERATIONS) {
+                frame = 0;
+                scale = 0.5;
+            }
+            requestAnimationFrame(draw);
+        }
+
+        // 启动动画
+        draw();
+    </script>
+</body>
+
+</html>
