@@ -14,7 +14,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 # Add custom font
-font_path = "sarasa-mono-sc-regular.ttf"
+font_path = "../../assets/fonts/sarasa-mono-sc-regular.ttf"
 font_manager.fontManager.addfont(font_path)
 plt.rcParams["font.family"] = "Sarasa Mono SC"
 
