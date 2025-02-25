@@ -47,13 +47,13 @@ Mandelbrot Set Meet LiBai 测试
 | 2 | 全屏展示动画 | 全屏展示动画得5分, 否则得0分 |
 | 3 | 所有代码放在同一个HTML文件里面 | 所有代码放在同一个HTML文件里面得5分, 否则得0分 |
 | 4 | Mandelbrot Set 图形美观度(不涉及大小问题) | 满分5分，长宽比例相等得1分,  Main cardioid 展示清晰得 1分,  能看到 period-2 bulb 得1分，能看到 period-3 bulb 得1分，能看到 period-4 bulb 得1分 |
-| 5 | Mandelbrot Set 的主要图形大小 | Mandelbrot Set 的主要图形初始大小约为屏幕的50%得5分, 过大但能看到 period-3 bulb得4分，过大但只能看完整到 Main cardioid 和 period-2 bulb得3分，过大但只能看不完整的 Main cardioid 和 period-2 bulb得2分，只能看到部分 Main cardioid 得1分，其它不得分，过小同理 |
+| 5 | Mandelbrot Set 的主要图形大小 | Mandelbrot Set 的主要图形初始大小约为屏幕的50%得5分 (能完整看到 period-4 buld 就不扣分), 过大但能看到 period-3 bulb得4分，过大但只能看完整到 Main cardioid 和 period-2 bulb得3分，过大但只能看不完整的 Main cardioid 和 period-2 bulb得2分，只能看到部分 Main cardioid 得1分，其它不得分，过小同理 |
 | 6 | Mandelbrot Set 的主要图形每渲染一次每帧放大 0.5% | Mandelbrot Set 的主要图形每渲染一次每帧放大 0.5%得5分, 不满足0.5%但是是放大得3分， 否则得0分 |
 | 7 | 总计渲染200次 | 总计渲染200次得5分, 否则得0分 |
 | 8 | 总计渲染200次后重置并循环 | 总计渲染200次后重置并循环得5分, 只重置或只循环得3分, 都不满足得0分 |
 | 9 | 李白诗书写正确 | 李白诗书写正确得5分, 书写不完全得3分, 只写标题得1分，不书写得0分 |
 | 10 | 李白诗处理 | 李白诗去重，保持字符顺序，不包含标点符号，循环使用均满足得5分, 少一项扣一分，均不满足得0分 |
-| 11 | Mandelbrot Set 的 Main cardioid and period bulbs 部分留空 | Mandelbrot Set 的 Main cardioid and period bulbs 部分留空得5分, 否则得0分 |
+| 11 | Mandelbrot Set 的 Main cardioid and period bulbs 部分留空 | Mandelbrot Set 的 Main cardioid and period bulbs 部分留空得5分, 部分留空得3分, 否则得0分 |
 | 12 | 动画的中心应使始终为 Main cardioid and period bulbs 的交界处 | 动画的中心应使始终为 Main cardioid and period bulbs 的交界处得5分, 否则得0分 |
 | 13 | 动画字体大小8px, 字体渲染排列也是8px，无间距 | 动画字体大小8px, 字体渲染排列也是8px，无间距得5分, 完成2项得3分，完成一项得2分，都不完成得0分 |
 | 14 | 字符从 mandelbrot set的最外围使用最深的颜色，然后依次变浅 | 字符从 mandelbrot set的最外围使用最深的颜色，然后依次变浅得5分, 颜色顺序搞错或不使用全部颜色得3分，均不满足得0分 |
@@ -83,6 +83,12 @@ Mandelbrot Set Meet LiBai 测试
 | claude-3.5-sonnet | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (书写不正确) | 5 (Set 在浏览器实际实践中保证了顺序) | 5 | 0 (画面中心不在交界处) | 5 | 5 | 5 | 5 | 13 | 86 | 
 | Qwen-2.5-Max | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5| 5 | 5 | 5 | 5 | 3 (颜色顺序搞错了) |  5 | 5 | 12 | 90 |
 | Grok-2 | 5 | 5 | 5 | 4 (长宽比例不等) | 1 (只能看到 Main cardioid) | 5 | 5 | 5 | 5 | 3 (未去重, 未保留顺序) | 5 | 0 (画面中心不在交界处) | 5 | 3 (颜色不正确) | 5 | 5 | 1 (-15, 看不到完整的 period-2 bulb) | 67 | 
+| Grok-3 | 5 | 5 | 5 | 4 (长宽比例不等) | 5 | 3 (放大只是字符放大了, 重绘有问题) | 5 | 5 | 5 | 5 | 5 | 0 (画面中心不在交界处) | 2 (及字体大小正确, 其余渲染都有问题) | 3 (颜色不正确) | 5 | 5 | 0 | 67 | 
+| Grok-3-Reasoning | 5 | 5 | 5 | 5 | 4 (过大, 但能看到period-3 bulb) | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (颜色不正确) | 5 | 3 (边框不是圆角的) | 13 (-10, 过大, 但能看到完整的 period-2 bulb) | 88 | 
+| Claude-3.7-Sonnet-Thinking | 5 | 5 | 5 | 5 | 4 (过大, 但能看到period-3 bulb) | 5 | 5 | 5 | 5 | 5 | 3 (Period-3/4 bulb 未留空) | 5 | 5 | 5 | 5 | 5 | 18 | 95 | 
+| Claude-3.7-Sonnet | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (Period-3/4 bulb 未留空) | 5 | 5 | 5 | 0 (计算不正确) | 5 | 9 | 82 | 
+| Qwen-2.5-Max-Thinking (QwQ Preview) | 5 | 5 | 5 | 5 | 2 (过大, 只能看不完整的 Main cardioid 和 period-2 bulb) | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 0 (计算不正确) | 3 (样式不正确, overflow了, 外加无圆角) | 20 (-10, 过大, 但能看到完整的 period-2 bulb) | 90 | 
+
 
 
 

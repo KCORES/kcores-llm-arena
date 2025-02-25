@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandelbrot"></canvas>
+    <script>
+        const canvas = document.getElementById('mandelbrot');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const chars = [];
+        const seen = new Set();
+        for (const c of poem) {
+            if (!seen.has(c)) {
+                seen.add(c);
+                chars.push(c);
+            }
+        }
+
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde", "#8491c3",
+            "#867ba9", "#68699b", "#706caa", "#5654a2", "#4d4398", "#4a488e", "#274a78",
+            "#2a4073", "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ].reverse();
+
+        let scale = 0.5;
+        const maxIterations = 100;
+        let frameCount = 0;
+        let startTime = performance.now();
+        let fpsHistory = [];
+        let avgFPS = 0;
+        const centerX = -0.75;
+        const centerY = 0;
+        let viewWidth, viewHeight;
+
+        function updateViewDimensions() {
+            const aspectRatio = canvas.width / canvas.height;
+            viewWidth = 3.0 * scale;
+            viewHeight = viewWidth / aspectRatio;
+        }
+        updateViewDimensions();
+
+        function drawMandelbrot() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const numGridX = Math.ceil(canvas.width / 8);
+            const numGridY = Math.ceil(canvas.height / 8);
+
+            for (let y = 0; y < numGridY; y++) {
+                for (let x = 0; x < numGridX; x++) {
+                    const gridX = x * 8 + 4;
+                    const gridY = y * 8 + 4;
+                    const c_re = centerX + (gridX / canvas.width - 0.5) * viewWidth;
+                    const c_im = centerY + (gridY / canvas.height - 0.5) * viewHeight;
+
+                    let iteration = 0;
+                    let z_re = 0, z_im = 0;
+                    while (z_re * z_re + z_im * z_im <= 4 && iteration < maxIterations) {
+                        const temp = z_re * z_re - z_im * z_im + c_re;
+                        z_im = 2 * z_re * z_im + c_im;
+                        z_re = temp;
+                        iteration++;
+                    }
+
+                    if (iteration === maxIterations) continue;
+
+                    const colorIndex = Math.floor((iteration / maxIterations) * (colors.length - 1));
+                    const color = colors[colorIndex];
+                    const charIndex = iteration % chars.length;
+                    const char = chars[charIndex];
+
+                    ctx.fillStyle = color;
+                    ctx.font = '8px monospace';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText(char, x * 8, y * 8);
+                }
+            }
+        }
+
+        function animate() {
+            const now = performance.now();
+            const elapsed = now - startTime;
+            fpsHistory.push(1000 / elapsed);
+            if (fpsHistory.length > 10) fpsHistory.shift();
+            avgFPS = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+
+            updateViewDimensions();
+            drawMandelbrot();
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fillRect(0, 0, 200, 70);
+            ctx.fillStyle = 'black';
+            ctx.font = '16px Arial';
+            ctx.fillText(`FPS: ${avgFPS.toFixed(1)}`, 10, 20);
+            ctx.fillText(`AVG FPS: ${avgFPS.toFixed(1)}`, 10, 40);
+            ctx.fillText(`CURRENT FRAME: ${frameCount}/200`, 10, 60);
+
+            scale *= 0.995;
+            frameCount++;
+            if (frameCount >= 200) {
+                frameCount = 0;
+                scale = 0.5;
+                startTime = now;
+                fpsHistory = [];
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>

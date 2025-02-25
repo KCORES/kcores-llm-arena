@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        // 获取 canvas 并设置为全屏
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+        canvas.width = W;
+        canvas.height = H;
+
+        // Mandelbrot Set 参数
+        const a_center = -0.75; // Main cardioid 和 period-2 bulb 的交界处
+        const b_center = 0;
+        const D_a0 = 2; // 初始 a 范围宽度，调整以使 Main cardioid 宽度约占屏幕 50%
+        const D_b0 = 2 * (H / W); // 保持宽高比
+        const max_iterations = 1000; // 最大迭代次数
+        const worker_count = 8; // 使用 8 个 Web Workers
+
+        // 计算字符网格
+        const num_cols = Math.floor(W / 8);
+        const num_rows = Math.floor(H / 8);
+        const rows_per_worker = Math.ceil(num_rows / worker_count);
+
+        // 从《静夜思》提取字符，去重并保留顺序
+        const chars = ['床', '前', '明', '月', '光', '疑', '是', '地', '上', '霜', '举', '头', '望', '低', '思', '故', '乡'];
+        const N = chars.length; // 17 个字符
+
+        // 颜色候选集，从深到浅（原始为浅到深，需反转）
+        const colors = [
+            '#0f2350', '#17184b', '#1c305c', '#192f60', '#223a70',
+            '#2a4073', '#274a78', '#4a488e', '#4d4398', '#5654a2',
+            '#706caa', '#68699b', '#867ba9', '#8491c3', '#bbbcde',
+            '#bbc8e6', '#ebf6f7', '#e8ecef', '#eaedf7', '#eaf4fc'
+        ];
+        const M = colors.length; // 20 个颜色
+
+        // Web Worker 代码
+        const workerCode = `
+      onmessage = function(e) {
+        const {a_min, D_a, b_min, D_b, W, H, rows, max_iterations, N, M, chars, colors} = e.data;
+        const num_cols = Math.floor(W / 8);
+        const result = [];
+
+        for (let i of rows) {
+          const rowResult = [];
+          const y = i * 8;
+          const b = b_min + (y / H) * D_b;
+
+          for (let j = 0; j < num_cols; j++) {
+            const x = j * 8;
+            const a = a_min + (x / W) * D_a;
+            let z_re = 0, z_im = 0;
+            let t = 0;
+
+            while (t < max_iterations) {
+              const z_re2 = z_re * z_re;
+              const z_im2 = z_im * z_im;
+              if (z_re2 + z_im2 > 4) break;
+              const new_z_re = z_re2 - z_im2 + a;
+              z_im = 2 * z_re * z_im + b;
+              z_re = new_z_re;
+              t++;
+            }
+
+            if (t < max_iterations) {
+              const charIndex = (t - 1) % N;
+              const colorIndex = Math.min(Math.floor((t - 1) / (max_iterations / M)), M - 1);
+              rowResult.push({char: chars[charIndex], color: colors[colorIndex]});
+            } else {
+              rowResult.push(null); // 在集合内，留空
+            }
+          }
+          result.push(rowResult);
+        }
+        postMessage(result);
+      }
+    `;
+
+        // 创建 Web Workers
+        const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+        const workerURL = URL.createObjectURL(workerBlob);
+        const workers = [];
+        for (let k = 0; k < worker_count; k++) {
+            workers[k] = new Worker(workerURL);
+        }
+
+        // 动画状态变量
+        let currentFrame = 0;
+        let totalTime = 0;
+        let frameCount = 0;
+        let avgFPS = 0;
+        let lastTime = performance.now();
+
+        // 绘制圆角矩形函数
+        function drawRoundedRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.arcTo(x + width, y, x + width, y + radius, radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.arcTo(x + width, y + height, x + width - radius, y + height, radius);
+            ctx.lineTo(x + radius, y + height);
+            ctx.arcTo(x, y + height, x, y + height - radius, radius);
+            ctx.lineTo(x, y + radius);
+            ctx.arcTo(x, y, x + radius, y, radius);
+            ctx.closePath();
+        }
+
+        // 计算和绘制每一帧
+        function computeFrame() {
+            // 计算当前缩放
+            const s = Math.pow(1.005, currentFrame);
+            const D_a = D_a0 / s;
+            const D_b = D_b0 / s;
+            const a_min = a_center - D_a / 2;
+            const b_min = b_center - D_b / 2;
+
+            // 分发任务给 Workers
+            const promises = [];
+            for (let k = 0; k < worker_count; k++) {
+                const startRow = k * rows_per_worker;
+                const endRow = Math.min((k + 1) * rows_per_worker, num_rows);
+                const rows = Array.from({ length: endRow - startRow }, (_, i) => startRow + i);
+                const promise = new Promise((resolve) => {
+                    workers[k].onmessage = (e) => resolve({ data: e.data, k });
+                    workers[k].postMessage({ a_min, D_a, b_min, D_b, W, H, rows, max_iterations, N, M, chars, colors });
+                });
+                promises.push(promise);
+            }
+
+            Promise.all(promises).then((results) => {
+                // 计算 FPS
+                const now = performance.now();
+                const frameTime = (now - lastTime) / 1000;
+                lastTime = now;
+                const currentFPS = 1 / frameTime;
+                totalTime += frameTime;
+                frameCount++;
+
+                if (frameCount === 200) {
+                    avgFPS = 200 / totalTime;
+                    totalTime = 0;
+                    frameCount = 0;
+                }
+
+                // 绘制帧
+                context.clearRect(0, 0, W, H);
+                const colorMap = {};
+
+                results.forEach(({ data: workerResult, k }) => {
+                    const startRow = k * rows_per_worker;
+                    workerResult.forEach((rowResult, rowIndex) => {
+                        const i = startRow + rowIndex;
+                        rowResult.forEach((cell, j) => {
+                            if (cell) {
+                                const { char, color } = cell;
+                                if (!colorMap[color]) colorMap[color] = [];
+                                colorMap[color].push({ i, j, char });
+                            }
+                        });
+                    });
+                });
+
+                // 按颜色分组绘制以优化性能
+                context.font = '8px monospace';
+                context.textBaseline = 'top';
+                for (const color in colorMap) {
+                    context.fillStyle = color;
+                    colorMap[color].forEach(({ i, j, char }) => {
+                        context.fillText(char, j * 8, i * 8);
+                    });
+                }
+
+                // 绘制指示器
+                const indicatorWidth = 200;
+                const indicatorHeight = 60;
+                const radius = 10;
+                context.fillStyle = 'rgba(255,255,255,0.5)';
+                drawRoundedRect(context, 10, 10, indicatorWidth, indicatorHeight, radius);
+                context.fill();
+
+                context.fillStyle = 'black';
+                context.font = '12px sans-serif';
+                context.fillText(`FPS: ${currentFPS.toFixed(2)}`, 20, 20);
+                context.fillText(`AVG FPS: ${avgFPS.toFixed(2)}`, 20, 35);
+                context.fillText(`CURRENT FRAME: ${currentFrame + 1}/200`, 20, 50);
+
+                // 更新帧数
+                currentFrame = (currentFrame + 1) % 200;
+                requestAnimationFrame(computeFrame);
+            });
+        }
+
+        // 启动动画
+        computeFrame();
+    </script>
+</body>
+
+</html>

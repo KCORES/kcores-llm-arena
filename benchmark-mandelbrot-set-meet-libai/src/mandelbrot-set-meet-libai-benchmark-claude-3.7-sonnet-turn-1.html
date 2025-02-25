@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 10px;
+            border-radius: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            font-family: monospace;
+            font-size: 14px;
+            color: #000;
+            z-index: 100;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <div class="stats" id="stats"></div>
+
+    <script>
+        // 初始化画布
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+        const stats = document.getElementById('stats');
+
+        // 设置画布大小为全屏
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 窗口大小变化时重新设置画布大小
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // 李白的《静夜思》
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+
+        // 去重并保留原有顺序
+        const uniqueChars = [...new Set(poem)].join('');
+
+        // 颜色集合（由浅到深）
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+
+        // 动画参数
+        let scale = 0.5; // 初始大小为屏幕的50%
+        const scaleIncrement = 0.005; // 每帧放大0.5%
+        let currentFrame = 0;
+        const totalFrames = 200;
+
+        // FPS计算
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let fps = 0;
+        let fpsSum = 0;
+        let avgFps = 0;
+        let animationCycles = 0;
+
+        // Mandelbrot Set 参数
+        const maxIterations = 100;
+        const escapeRadius = 2;
+
+        // 字符大小和间距
+        const charSize = 8;
+
+        // 计算 Mandelbrot Set 的值
+        function mandelbrot(x0, y0) {
+            let x = 0;
+            let y = 0;
+            let iteration = 0;
+
+            while (x * x + y * y <= escapeRadius * escapeRadius && iteration < maxIterations) {
+                const xTemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xTemp;
+                iteration++;
+            }
+
+            if (iteration === maxIterations) {
+                return -1; // 在集合内部
+            }
+
+            // 平滑着色
+            return iteration + 1 - Math.log(Math.log(Math.sqrt(x * x + y * y))) / Math.log(2);
+        }
+
+        // 判断点是否在主心形区域或周期泡泡中
+        function isInMainCardioidOrBulb(x, y) {
+            // 检查主心形区域
+            const q = (x - 0.25) * (x - 0.25) + y * y;
+            if (q * (q + (x - 0.25)) <= 0.25 * y * y) {
+                return true;
+            }
+
+            // 检查周期为2的圆形
+            if ((x + 1) * (x + 1) + y * y <= 0.0625) {
+                return true;
+            }
+
+            return false;
+        }
+
+        // 渲染 Mandelbrot Set
+        function renderMandelbrot() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = `${charSize}px monospace`;
+
+            const centerX = -0.75; // Main cardioid and period bulbs 的交界处
+            const centerY = 0;
+
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // 计算缩放后的视图范围
+            const currentScale = scale * (1 + scaleIncrement * currentFrame);
+            const viewWidth = 3.5 / currentScale;
+            const viewHeight = (height / width) * viewWidth;
+
+            const xMin = centerX - viewWidth / 2;
+            const xMax = centerX + viewWidth / 2;
+            const yMin = centerY - viewHeight / 2;
+            const yMax = centerY + viewHeight / 2;
+
+            // 计算字符网格的大小
+            const cols = Math.floor(width / charSize);
+            const rows = Math.floor(height / charSize);
+
+            // 存储迭代值以便后续处理
+            const iterationValues = [];
+            let maxIter = 0;
+
+            // 计算每个字符位置的迭代值
+            for (let row = 0; row < rows; row++) {
+                iterationValues[row] = [];
+                for (let col = 0; col < cols; col++) {
+                    const x = xMin + (col / cols) * (xMax - xMin);
+                    const y = yMin + (row / rows) * (yMax - yMin);
+
+                    if (isInMainCardioidOrBulb(x, y)) {
+                        iterationValues[row][col] = -2; // 特殊标记主心形区域和周期泡泡
+                    } else {
+                        const iter = mandelbrot(x, y);
+                        iterationValues[row][col] = iter;
+                        if (iter > 0 && iter < maxIterations) {
+                            maxIter = Math.max(maxIter, iter);
+                        }
+                    }
+                }
+            }
+
+            // 渲染字符
+            let charIndex = 0;
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const iter = iterationValues[row][col];
+
+                    if (iter === -2) {
+                        // 主心形区域和周期泡泡留空
+                        continue;
+                    } else if (iter === -1) {
+                        // 集合内部使用最浅的颜色
+                        ctx.fillStyle = colors[0];
+                        const char = uniqueChars[charIndex % uniqueChars.length];
+                        ctx.fillText(char, col * charSize, row * charSize + charSize);
+                        charIndex++;
+                    } else {
+                        // 根据迭代值选择颜色
+                        const colorIndex = Math.min(colors.length - 1,
+                            Math.floor((maxIterations - iter) / maxIterations * colors.length));
+                        ctx.fillStyle = colors[colorIndex];
+                        const char = uniqueChars[charIndex % uniqueChars.length];
+                        ctx.fillText(char, col * charSize, row * charSize + charSize);
+                        charIndex++;
+                    }
+                }
+            }
+
+            // 更新帧计数和FPS
+            frameCount++;
+            currentFrame = (currentFrame + 1) % totalFrames;
+
+            // 如果完成一个循环，重置并计算平均FPS
+            if (currentFrame === 0) {
+                animationCycles++;
+                if (animationCycles > 1) { // 跳过第一个循环的计算
+                    avgFps = fpsSum / totalFrames;
+                    fpsSum = 0;
+                }
+            }
+
+            const now = performance.now();
+            const elapsed = now - lastTime;
+
+            if (elapsed >= 1000) {
+                fps = Math.round((frameCount * 1000) / elapsed);
+                fpsSum += fps;
+                frameCount = 0;
+                lastTime = now;
+            }
+
+            // 更新统计信息
+            stats.innerHTML = `FPS: ${fps}<br>AVG FPS: ${Math.round(avgFps)}<br>CURRENT FRAME: ${currentFrame}/${totalFrames}`;
+
+            requestAnimationFrame(renderMandelbrot);
+        }
+
+        // 开始动画
+        renderMandelbrot();
+    </script>
+</body>
+
+</html>

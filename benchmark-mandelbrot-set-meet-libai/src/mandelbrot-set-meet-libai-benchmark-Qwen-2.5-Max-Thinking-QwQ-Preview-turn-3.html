@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <script>
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+
+        // 初始化字符集
+        const poem = '床前明月光疑是地上霜举头望明月低头思故乡';
+        const chars = [];
+        const seen = new Set();
+        for (const c of poem) {
+            if (c.trim() && !/[，。]/.test(c) && !seen.has(c)) {
+                seen.add(c);
+                chars.push(c);
+            }
+        }
+
+        // 颜色配置（反转为由深到浅）
+        const colors = [
+            '#0f2350', '#17184b', '#1c305c', '#192f60', '#223a70', '#2a4073', '#274a78',
+            '#4a488e', '#4d4398', '#5654a2', '#706caa', '#68699b', '#867ba9', '#8491c3',
+            '#bbbcde', '#bbc8e6', '#ebf6f7', '#e8ecef', '#eaedf7', '#eaf4fc'
+        ];
+
+        const maxIter = 100; // 最大迭代次数
+        let scale = 0.5; // 初始缩放比例
+        const center = { x: -0.5, y: 0 }; // 动画中心
+        let frameCount = 0;
+        const maxFrames = 200;
+        let lastTime = 0;
+        let fpsHistory = [];
+        let avgFPS = 0;
+
+        // 全屏设置
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Mandelbrot计算
+        function mandelbrot(c_re, c_im) {
+            let z_re = c_re, z_im = c_im;
+            let iter = 0;
+            while (iter < maxIter) {
+                const z_re2 = z_re * z_re;
+                const z_im2 = z_im * z_im;
+                if (z_re2 + z_im2 > 4) break;
+                z_im = 2 * z_re * z_im + c_im;
+                z_re = z_re2 - z_im2 + c_re;
+                iter++;
+            }
+            return iter;
+        }
+
+        // 主渲染循环
+        function render(now) {
+            now *= 0.001;
+            const deltaTime = now - lastTime;
+            lastTime = now;
+            fpsHistory.push(1 / deltaTime);
+            if (fpsHistory.length > 10) fpsHistory.shift();
+
+            // 清屏
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 计算当前视窗参数
+            const width = 3 * scale;
+            const height = width * (canvas.height / canvas.width);
+
+            // 绘制Mandelbrot
+            ctx.font = '8px monospace';
+            ctx.textBaseline = 'top';
+
+            for (let i = 0; i < canvas.width; i += 8) {
+                for (let j = 0; j < canvas.height; j += 8) {
+                    // 计算复数坐标
+                    const x = i + 4;
+                    const y = j + 4;
+                    const re = center.x + (x / canvas.width - 0.5) * width;
+                    const im = center.y + (y / canvas.height - 0.5) * height;
+
+                    const iter = mandelbrot(re, im);
+
+                    if (iter === maxIter) continue; // 主心脏区留空
+
+                    // 选择颜色和字符
+                    const colorIndex = Math.min(
+                        Math.floor((iter / maxIter) * (colors.length - 1)),
+                        colors.length - 1
+                    );
+                    ctx.fillStyle = colors[colorIndex];
+                    ctx.fillText(
+                        chars[iter % chars.length],
+                        i, j
+                    );
+                }
+            }
+
+            // 更新缩放
+            if (frameCount < maxFrames) {
+                scale *= 1.005;
+                frameCount++;
+            } else {
+                scale = 0.5;
+                frameCount = 0;
+                avgFPS = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+                fpsHistory = [];
+            }
+
+            // 绘制FPS信息
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.fillRect(10, 10, 220, 70);
+            ctx.fillStyle = 'black';
+            ctx.fillText(`FPS: ${fpsHistory[fpsHistory.length - 1].toFixed(1)}`, 20, 20);
+            ctx.fillText(`AVG FPS: ${avgFPS.toFixed(1)}`, 20, 40);
+            ctx.fillText(`CURRENT FRAME: ${frameCount}/${maxFrames}`, 20, 60);
+
+            requestAnimationFrame(render);
+        }
+
+        // 启动动画
+        requestAnimationFrame(render);
+    </script>
+</body>
+
+</html>

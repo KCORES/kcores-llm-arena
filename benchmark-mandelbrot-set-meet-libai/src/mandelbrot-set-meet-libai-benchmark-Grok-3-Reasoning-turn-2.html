@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+        // 定义《静夜思》的去重字符序列
+        const poem = '床前明月光疑是地上霜举头望低思故乡'; // 去重后按原文顺序，不含标点
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ]; // 颜色从浅到深
+
+        // 设置全屏Canvas
+        const canvas = document.createElement('canvas');
+        document.body.appendChild(canvas);
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const ctx = canvas.getContext('2d');
+        const N = Math.floor(window.innerWidth / 8); // 水平字符数
+        const M = Math.floor(window.innerHeight / 8); // 垂直字符数
+
+        // Mandelbrot Set 参数
+        const center_re = -0.75; // Main cardioid 和 period 2 bulb 交界处
+        const center_im = 0;
+        const initial_delta = 1; // 初始范围，主图形宽度约1，占屏幕50%
+        const max_iter = 500; // 最大迭代次数
+
+        // 创建8个Web Workers以优化性能
+        const workerCode = `
+            onmessage = function(e) {
+                const {j_start, j_end, re_min, re_max, im_min, im_max, N, M, max_iter} = e.data;
+                const poem = '床前明月光疑是地上霜举头望低思故乡';
+
+                function isInMainCardioidOrPeriod2Bulb(c_re, c_im) {
+                    // 检查 Period 2 Bulb: 中心在 -1，半径 1/4
+                    if ((c_re + 1) * (c_re + 1) + c_im * c_im < 0.0625) return true;
+                    // 检查 Main Cardioid
+                    const x = c_re;
+                    const y = c_im;
+                    const q = (x - 0.25) * (x - 0.25) + y * y;
+                    if (q * (q + (x - 0.25)) < 0.25 * y * y) return true;
+                    return false;
+                }
+
+                const strip_height = j_end - j_start;
+                const strip_chars = [];
+                const strip_colors = new Uint8Array(strip_height * N);
+                for (let dj = 0; dj < strip_height; dj++) {
+                    const j = j_start + dj;
+                    for (let i = 0; i < N; i++) {
+                        const c_re = re_min + (i + 0.5) / N * (re_max - re_min);
+                        const c_im = im_min + (j + 0.5) / M * (im_max - im_min);
+                        let char, color_index;
+                        if (isInMainCardioidOrPeriod2Bulb(c_re, c_im)) {
+                            char = '';
+                            color_index = -1;
+                        } else {
+                            let z_re = 0, z_im = 0;
+                            let k = 0;
+                            for (; k < max_iter; k++) {
+                                const z_re2 = z_re * z_re - z_im * z_im + c_re;
+                                const z_im2 = 2 * z_re * z_im + c_im;
+                                if (z_re2 * z_re2 + z_im2 * z_im2 > 4) break;
+                                z_re = z_re2;
+                                z_im = z_im2;
+                            }
+                            char = poem[k % poem.length];
+                            color_index = (k === max_iter) ? 0 : 19 - Math.floor(k / (max_iter / 20));
+                            if (color_index < 0) color_index = 0;
+                        }
+                        strip_chars.push(char);
+                        strip_colors[dj * N + i] = color_index;
+                    }
+                }
+                postMessage({j_start, j_end, chars: strip_chars.join(''), colors: strip_colors}, [strip_colors.buffer]);
+            };
+        `;
+        const workers = [];
+        for (let i = 0; i < 8; i++) {
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const worker = new Worker(URL.createObjectURL(blob));
+            workers.push(worker);
+        }
+
+        // 动画控制变量
+        let frame_counter = 0;
+        let totalTime = 0;
+        let avg_fps = 0;
+
+        async function renderFrame() {
+            const delta = initial_delta / Math.pow(1.005, frame_counter); // 每帧放大0.5%
+            const re_min = center_re - delta;
+            const re_max = center_re + delta;
+            const im_min = center_im - delta * (M / N);
+            const im_max = center_im + delta * (M / N);
+            const frameStartTime = performance.now();
+
+            // 并行发送任务给Workers
+            const promises = workers.map((worker, index) => {
+                const j_start = Math.floor(index * M / workers.length);
+                const j_end = Math.floor((index + 1) * M / workers.length);
+                return new Promise((resolve) => {
+                    worker.onmessage = (e) => resolve(e.data);
+                    worker.postMessage({ j_start, j_end, re_min, re_max, im_min, im_max, N, M, max_iter });
+                });
+            });
+            const results = await Promise.all(promises);
+
+            // 绘制帧
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '8px monospace';
+            const colorGroups = Array.from({ length: 20 }, () => []);
+            results.forEach((result) => {
+                const { j_start, j_end, chars, colors } = result;
+                const strip_height = j_end - j_start;
+                for (let dj = 0; dj < strip_height; dj++) {
+                    for (let i = 0; i < N; i++) {
+                        const j = j_start + dj;
+                        const idx = dj * N + i;
+                        const color_index = colors[idx];
+                        if (color_index >= 0) {
+                            const char = chars[idx];
+                            colorGroups[color_index].push({ i, j, char });
+                        }
+                    }
+                }
+            });
+
+            // 按颜色分组绘制以优化性能
+            colors.forEach((color, k) => {
+                ctx.fillStyle = color;
+                colorGroups[k].forEach(({ i, j, char }) => {
+                    ctx.fillText(char, i * 8, j * 8 + 8);
+                });
+            });
+
+            // 绘制指示器
+            const frameEndTime = performance.now();
+            const timeDiff = (frameEndTime - frameStartTime) / 1000;
+            const fps = 1 / timeDiff;
+            totalTime += timeDiff;
+            if (frame_counter === 199) {
+                avg_fps = 200 / totalTime;
+                totalTime = 0;
+            }
+
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.beginPath();
+            ctx.roundRect(10, 10, 200, 60, 10);
+            ctx.fill();
+            ctx.fillStyle = 'black';
+            ctx.font = '12px sans-serif';
+            ctx.fillText(`FPS: ${fps.toFixed(2)}`, 20, 30);
+            ctx.fillText(`AVG FPS: ${avg_fps.toFixed(2)}`, 20, 50);
+            ctx.fillText(`CURRENT FRAME: ${frame_counter + 1}/200`, 20, 70);
+
+            // 更新帧计数并循环
+            frame_counter = (frame_counter + 1) % 200;
+            requestAnimationFrame(renderFrame);
+        }
+
+        // 启动动画
+        renderFrame();
+    </script>
+</body>
+
+</html>

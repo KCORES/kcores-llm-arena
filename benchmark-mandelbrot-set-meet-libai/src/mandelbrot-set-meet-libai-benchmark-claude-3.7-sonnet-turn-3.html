@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #000;
+            z-index: 100;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <div class="stats" id="stats">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>CURRENT FRAME: <span id="currentFrame">0</span>/200</div>
+    </div>
+
+    <script>
+        // 初始化画布
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 设置画布大小为全屏
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 窗口大小变化时调整画布大小
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // 李白《静夜思》的文本，去除标点符号和重复字符
+        const originalPoem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const uniqueChars = [...new Set(originalPoem)].join('');
+
+        // 颜色数组（由浅到深）
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+
+        // 动画参数
+        let scale = 1.0;
+        const scaleIncrement = 0.005; // 每帧放大0.5%
+        let frameCount = 0;
+        const maxFrames = 200;
+
+        // FPS 计算
+        let lastFrameTime = 0;
+        let fps = 0;
+        let fpsValues = [];
+        let avgFps = 0;
+
+        // 字符大小和间距
+        const charSize = 8;
+
+        // Mandelbrot 参数
+        const maxIterations = 100;
+
+        // 中心点设置为 Main cardioid 和 period bulbs 的交界处
+        const centerX = -0.75;
+        const centerY = 0;
+
+        // 计算 Mandelbrot 集合的迭代次数
+        function calculateMandelbrot(x0, y0, maxIter) {
+            let x = 0;
+            let y = 0;
+            let iteration = 0;
+
+            while (x * x + y * y <= 4 && iteration < maxIter) {
+                const xTemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xTemp;
+                iteration++;
+            }
+
+            // 检查是否在 Main cardioid
+            if (isInMainCardioid(x0, y0) || isInPeriodTwoBulb(x0, y0)) {
+                return -1; // 表示在主体内部
+            }
+
+            return iteration;
+        }
+
+        // 检查点是否在 Main cardioid 内
+        function isInMainCardioid(x, y) {
+            const q = (x - 0.25) * (x - 0.25) + y * y;
+            return q * (q + (x - 0.25)) <= 0.25 * y * y;
+        }
+
+        // 检查点是否在 Period-2 bulb 内
+        function isInPeriodTwoBulb(x, y) {
+            return (x + 1) * (x + 1) + y * y <= 0.0625;
+        }
+
+        // 渲染 Mandelbrot 集合
+        function renderMandelbrot() {
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // 计算初始大小为屏幕的50%
+            const baseSize = Math.min(width, height) * 0.5;
+            const currentSize = baseSize * scale;
+
+            // 清除画布
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            // 设置字体
+            ctx.font = `${charSize}px monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // 计算渲染区域
+            const aspectRatio = width / height;
+            const rangeY = 2.0 / currentSize;
+            const rangeX = rangeY * aspectRatio;
+
+            // 计算起始位置，使中心点位于 Main cardioid 和 period bulbs 的交界处
+            const startX = centerX - rangeX / 2;
+            const startY = centerY - rangeY / 2;
+
+            // 计算字符网格
+            const cols = Math.ceil(width / charSize);
+            const rows = Math.ceil(height / charSize);
+
+            // 渲染 Mandelbrot 集合
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = startX + col * (rangeX / cols);
+                    const y = startY + row * (rangeY / rows);
+
+                    const iterations = calculateMandelbrot(x, y, maxIterations);
+
+                    if (iterations === -1) {
+                        // 在 Main cardioid 或 period bulbs 内部，留空
+                        continue;
+                    }
+
+                    if (iterations < maxIterations) {
+                        // 选择字符和颜色
+                        const charIndex = (col + row) % uniqueChars.length;
+                        const char = uniqueChars[charIndex];
+
+                        // 根据迭代次数选择颜色，外围使用深色，内部使用浅色
+                        const colorIndex = Math.floor((maxIterations - iterations) / maxIterations * colors.length);
+                        const clampedColorIndex = Math.min(Math.max(0, colorIndex), colors.length - 1);
+                        ctx.fillStyle = colors[clampedColorIndex];
+
+                        // 绘制字符
+                        const posX = col * charSize + charSize / 2;
+                        const posY = row * charSize + charSize / 2;
+                        ctx.fillText(char, posX, posY);
+                    }
+                }
+            }
+        }
+
+        // 更新 FPS 显示
+        function updateStats(timestamp) {
+            if (lastFrameTime) {
+                const deltaTime = timestamp - lastFrameTime;
+                fps = Math.round(1000 / deltaTime);
+
+                document.getElementById('fps').textContent = fps;
+                document.getElementById('currentFrame').textContent = frameCount;
+            }
+
+            lastFrameTime = timestamp;
+
+            // 记录 FPS 值用于计算平均值
+            fpsValues.push(fps);
+
+            // 如果完成一个完整循环，计算平均 FPS
+            if (frameCount === 0 && fpsValues.length > 0) {
+                const sum = fpsValues.reduce((a, b) => a + b, 0);
+                avgFps = Math.round(sum / fpsValues.length);
+                document.getElementById('avgFps').textContent = avgFps;
+                fpsValues = [];
+            }
+        }
+
+        // 动画循环
+        function animate(timestamp) {
+            updateStats(timestamp);
+
+            // 渲染 Mandelbrot 集合
+            renderMandelbrot();
+
+            // 更新缩放比例
+            scale *= (1 + scaleIncrement);
+
+            // 更新帧计数
+            frameCount = (frameCount + 1) % maxFrames;
+
+            // 如果达到最大帧数，重置缩放
+            if (frameCount === 0) {
+                scale = 1.0;
+            }
+
+            // 请求下一帧
+            requestAnimationFrame(animate);
+        }
+
+        // 启动动画
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

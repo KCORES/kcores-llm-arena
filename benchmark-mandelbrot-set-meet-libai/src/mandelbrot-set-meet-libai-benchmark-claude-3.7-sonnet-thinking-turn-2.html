@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Set</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 10px;
+            border-radius: 10px;
+            font-family: monospace;
+            color: black;
+            z-index: 100;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="stats">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>CURRENT FRAME: <span id="frameCount">0</span>/200</div>
+    </div>
+
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Stats elements
+        const fpsElement = document.getElementById('fps');
+        const avgFpsElement = document.getElementById('avgFps');
+        const frameCountElement = document.getElementById('frameCount');
+
+        // Set canvas to full screen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Li Bai's poem "静夜思" without punctuation and deduplicated
+        const poemOriginal = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+        // Remove punctuation and deduplicate while preserving order
+        const poem = (() => {
+            const noPunctuation = poemOriginal.replace(/[，。]/g, '');
+            const seen = new Set();
+            const result = [];
+
+            for (const char of noPunctuation) {
+                if (!seen.has(char)) {
+                    seen.add(char);
+                    result.push(char);
+                }
+            }
+
+            return result.join('');
+        })();
+
+        // Color palette from dark to light
+        const colors = [
+            "#0f2350", "#17184b", "#1c305c", "#192f60", "#223a70",
+            "#2a4073", "#274a78", "#4a488e", "#4d4398", "#5654a2",
+            "#706caa", "#68699b", "#867ba9", "#8491c3", "#bbbcde",
+            "#bbc8e6", "#ebf6f7", "#e8ecef", "#eaedf7", "#eaf4fc"
+        ];
+
+        // Mandelbrot set parameters
+        const charSize = 8; // Size of each character in pixels
+        const maxIterations = 100;
+        const escapeRadius = 4.0;
+
+        // Center on the boundary between cardioid and period-2 bulb
+        const centerX = -0.75;
+        const centerY = 0;
+
+        // Initial scale for 50% screen size
+        let initialScale;
+        function calculateInitialScale() {
+            const smallerDimension = Math.min(canvas.width, canvas.height);
+            initialScale = 3.0;
+        }
+
+        let scale;
+        const zoomFactor = 1.005; // 0.5% zoom per frame
+
+        // Animation parameters
+        let frameCount = 0;
+        const totalFrames = 200;
+        let lastFrameTime = 0;
+        let fps = 0;
+        let fpsHistory = [];
+        let avgFps = 0;
+
+        // Worker thread code for parallel computation
+        const workerCode = `
+            // Function to check if a point is in the main cardioid or period-2 bulb
+            function isInMainCardioidOrBulb(x, y) {
+                // Check if point is in main cardioid
+                const q = (x - 0.25) ** 2 + y ** 2;
+                if (q * (q + (x - 0.25)) < 0.25 * y ** 2) {
+                    return true;
+                }
+                
+                // Check if point is in period-2 bulb
+                if ((x + 1) ** 2 + y ** 2 < 0.0625) {
+                    return true;
+                }
+                
+                return false;
+            }
+
+            // Optimized Mandelbrot iteration count calculation
+            function mandelbrotIterations(x0, y0, maxIterations, escapeRadius) {
+                if (isInMainCardioidOrBulb(x0, y0)) {
+                    return -1; // Special value for main cardioid and bulb
+                }
+                
+                let x = 0;
+                let y = 0;
+                let x2 = 0;
+                let y2 = 0;
+                let iteration = 0;
+                
+                while (x2 + y2 < escapeRadius && iteration < maxIterations) {
+                    y = 2 * x * y + y0;
+                    x = x2 - y2 + x0;
+                    x2 = x * x;
+                    y2 = y * y;
+                    iteration++;
+                }
+                
+                if (iteration === maxIterations) {
+                    return -2; // In the set but not in cardioid/bulb
+                }
+                
+                return iteration;
+            }
+
+            self.onmessage = function(e) {
+                const { startRow, endRow, width, height, xMin, yMin, xMax, yMax, maxIterations, escapeRadius } = e.data;
+                
+                const result = new Int16Array((endRow - startRow) * width);
+                
+                for (let py = startRow; py < endRow; py++) {
+                    const y = yMin + (py / height) * (yMax - yMin);
+                    
+                    for (let px = 0; px < width; px++) {
+                        const x = xMin + (px / width) * (xMax - xMin);
+                        
+                        result[(py - startRow) * width + px] = mandelbrotIterations(x, y, maxIterations, escapeRadius);
+                    }
+                }
+                
+                self.postMessage({ 
+                    startRow: startRow,
+                    endRow: endRow,
+                    result: result.buffer 
+                }, [result.buffer]);
+            };
+        `;
+
+        // Create worker pool for parallel processing
+        const workers = [];
+        let pendingWorkers = 0;
+        let mandelbrotData = null;
+        let width, height;
+
+        function createWorkers() {
+            const maxWorkers = Math.min(8, navigator.hardwareConcurrency || 4);
+
+            for (let i = 0; i < maxWorkers; i++) {
+                const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+                const workerUrl = URL.createObjectURL(workerBlob);
+                const worker = new Worker(workerUrl);
+
+                worker.onmessage = function (e) {
+                    const { startRow, endRow, result } = e.data;
+                    const data = new Int16Array(result);
+
+                    // Copy the data to our results array
+                    for (let y = startRow, idx = 0; y < endRow; y++) {
+                        for (let x = 0; x < width; x++, idx++) {
+                            mandelbrotData[y * width + x] = data[idx];
+                        }
+                    }
+
+                    pendingWorkers--;
+
+                    // When all workers are done, render the result
+                    if (pendingWorkers === 0) {
+                        renderMandelbrot();
+
+                        // Calculate FPS
+                        const now = performance.now();
+                        if (lastFrameTime > 0) {
+                            fps = 1000 / (now - lastFrameTime);
+                            fpsHistory.push(fps);
+                        }
+                        lastFrameTime = now;
+
+                        // Update frame count and prepare next frame
+                        frameCount++;
+                        frameCountElement.textContent = frameCount;
+
+                        if (frameCount <= totalFrames) {
+                            scale /= zoomFactor; // Zoom in by 0.5% each frame
+                            requestAnimationFrame(calculateMandelbrot);
+                        } else {
+                            // Reset animation
+                            frameCount = 1;
+                            scale = initialScale;
+
+                            // Calculate average FPS
+                            avgFps = fpsHistory.reduce((sum, value) => sum + value, 0) / fpsHistory.length;
+                            avgFpsElement.textContent = avgFps.toFixed(1);
+                            fpsHistory = [];
+
+                            requestAnimationFrame(calculateMandelbrot);
+                        }
+                    }
+                };
+
+                workers.push(worker);
+            }
+        }
+
+        // Calculate Mandelbrot set using worker threads
+        function calculateMandelbrot() {
+            width = Math.ceil(canvas.width / charSize);
+            height = Math.ceil(canvas.height / charSize);
+
+            const aspectRatio = canvas.width / canvas.height;
+            const xRange = scale;
+            const yRange = scale / aspectRatio;
+
+            const xMin = centerX - xRange / 2;
+            const yMin = centerY - yRange / 2;
+            const xMax = centerX + xRange / 2;
+            const yMax = centerY + yRange / 2;
+
+            // Create or reset the mandelbrot data array
+            mandelbrotData = new Int16Array(width * height);
+
+            // Divide the work among workers
+            const rowsPerWorker = Math.ceil(height / workers.length);
+            pendingWorkers = 0;
+
+            for (let i = 0; i < workers.length; i++) {
+                const startRow = i * rowsPerWorker;
+                const endRow = Math.min(startRow + rowsPerWorker, height);
+
+                if (startRow >= height) break;
+
+                pendingWorkers++;
+
+                workers[i].postMessage({
+                    startRow: startRow,
+                    endRow: endRow,
+                    width: width,
+                    height: height,
+                    xMin: xMin,
+                    yMin: yMin,
+                    xMax: xMax,
+                    yMax: yMax,
+                    maxIterations: maxIterations,
+                    escapeRadius: escapeRadius
+                });
+            }
+        }
+
+        // Render Mandelbrot set with ASCII characters
+        function renderMandelbrot() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.font = '8px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            let poemIndex = 0;
+
+            for (let py = 0; py < height; py++) {
+                for (let px = 0; px < width; px++) {
+                    const iteration = mandelbrotData[py * width + px];
+
+                    if (iteration === -1) {
+                        // Main cardioid or period-2 bulb - leave empty
+                        continue;
+                    } else if (iteration === -2) {
+                        // Inside Mandelbrot set but not in cardioid/bulb - use lightest color
+                        ctx.fillStyle = colors[colors.length - 1];
+                        ctx.fillText(poem[poemIndex % poem.length], px * charSize + charSize / 2, py * charSize + charSize / 2);
+                        poemIndex++;
+                    } else {
+                        // Outside the set - use color based on iteration count
+                        // Map: lowest iterations (outer edge) = darkest colors, higher iterations (near set) = lighter colors
+                        const colorIndex = Math.min(colors.length - 1, Math.floor((iteration / maxIterations) * colors.length));
+                        ctx.fillStyle = colors[colorIndex];
+                        ctx.fillText(poem[poemIndex % poem.length], px * charSize + charSize / 2, py * charSize + charSize / 2);
+                        poemIndex++;
+                    }
+                }
+            }
+
+            // Update stats display
+            fpsElement.textContent = fps.toFixed(1);
+        }
+
+        // Initialize and start animation
+        function init() {
+            calculateInitialScale();
+            scale = initialScale;
+            createWorkers();
+
+            lastFrameTime = 0;
+            frameCount = 1;
+
+            calculateMandelbrot();
+        }
+
+        // Start everything when page loads
+        window.onload = init;
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas to fullscreen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Li Bai's poem "Quiet Night Thought" - remove duplicates and punctuation
+        const poem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+        const uniqueChars = [...new Set(poem.replace(/[，。]/g, ''))].join('');
+
+        // Colors from light to dark (will be reversed for outer-to-inner)
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6",
+            "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+            "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073",
+            "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ].reverse(); // Reverse to have deep colors on the outside
+
+        // Constants
+        const fontSize = 8;
+        const totalFrames = 200;
+        const maxIterations = 100;
+
+        // State variables
+        let currentFrame = 0;
+        let frameStartTime = performance.now();
+        let fpsValues = [];
+        let currentFps = 0;
+        let avgFps = 0;
+
+        // Mandelbrot set center point (at the boundary of main cardioid)
+        const centerX = -0.75;
+        const centerY = 0;
+
+        // Pre-compute and cache character renders
+        const charCache = {};
+        function getCharImage(char, color) {
+            const key = `${char}_${color}`;
+            if (!charCache[key]) {
+                const charCanvas = document.createElement('canvas');
+                charCanvas.width = fontSize;
+                charCanvas.height = fontSize;
+                const charCtx = charCanvas.getContext('2d');
+                charCtx.font = `${fontSize}px monospace`;
+                charCtx.textBaseline = 'top';
+                charCtx.fillStyle = color;
+                charCtx.fillText(char, 0, 0);
+                charCache[key] = charCanvas;
+            }
+            return charCache[key];
+        }
+
+        // Preload all character-color combinations
+        function preloadChars() {
+            for (const char of uniqueChars) {
+                for (const color of colors) {
+                    getCharImage(char, color);
+                }
+            }
+        }
+        preloadChars();
+
+        // Create worker pool for parallel processing
+        const workerCount = Math.min(8, navigator.hardwareConcurrency || 4);
+        const workers = [];
+        let activeWorkers = 0;
+        let renderData = [];
+
+        // Create worker for Mandelbrot computation
+        function createWorker(id) {
+            const workerCode = `
+                self.onmessage = function(e) {
+                    const { startY, endY, width, height, scale, offsetX, offsetY, maxIter, fontSize } = e.data;
+                    const result = [];
+                    
+                    for (let y = startY; y < endY; y += fontSize) {
+                        const row = Math.floor(y / fontSize);
+                        
+                        for (let x = 0; x < width; x += fontSize) {
+                            const col = Math.floor(x / fontSize);
+                            
+                            // Convert screen coordinates to Mandelbrot coordinates
+                            const x0 = offsetX + (x - width/2) / scale;
+                            const y0 = offsetY + (y - height/2) / scale;
+                            
+                            // Quick check for main cardioid
+                            const q = (x0 - 0.25)*(x0 - 0.25) + y0*y0;
+                            if (q*(q + (x0 - 0.25)) <= 0.25*y0*y0) {
+                                continue; // Inside main cardioid
+                            }
+                            
+                            // Quick check for period-2 bulb
+                            if ((x0 + 1)*(x0 + 1) + y0*y0 <= 0.0625) {
+                                continue; // Inside period-2 bulb
+                            }
+                            
+                            // Calculate Mandelbrot iterations
+                            let zx = 0;
+                            let zy = 0;
+                            let iteration = 0;
+                            
+                            while (zx*zx + zy*zy < 4 && iteration < maxIter) {
+                                const temp = zx*zx - zy*zy + x0;
+                                zy = 2*zx*zy + y0;
+                                zx = temp;
+                                iteration++;
+                            }
+                            
+                            // Only store points outside the set
+                            if (iteration < maxIter) {
+                                result.push({ col, row, iteration });
+                            }
+                        }
+                    }
+                    
+                    self.postMessage({ id: e.data.id, result });
+                }
+            `;
+
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const worker = new Worker(URL.createObjectURL(blob));
+
+            worker.onmessage = function (e) {
+                renderData.push(...e.data.result);
+                activeWorkers--;
+
+                if (activeWorkers === 0) {
+                    // All workers have completed
+                    renderFrame();
+                }
+            };
+
+            return worker;
+        }
+
+        // Initialize workers
+        for (let i = 0; i < workerCount; i++) {
+            workers.push(createWorker(i));
+        }
+
+        // Start worker tasks for the next frame
+        function startFrame() {
+            const now = performance.now();
+            const elapsed = now - frameStartTime;
+            frameStartTime = now;
+
+            // Update FPS calculation
+            currentFps = 1000 / elapsed;
+            fpsValues.push(currentFps);
+            if (fpsValues.length > 20) fpsValues.shift();
+
+            // Calculate average FPS at the end of the animation cycle
+            if (currentFrame === 0) {
+                avgFps = fpsValues.reduce((sum, value) => sum + value, 0) / fpsValues.length;
+            }
+
+            // Calculate zoom factor for this frame
+            const zoomFactor = 1 + (currentFrame * 0.005); // Increase by 0.5% per frame
+            const baseScale = Math.min(canvas.width, canvas.height) * 0.5; // 50% of screen
+            const scale = baseScale * zoomFactor;
+
+            // Reset rendering data
+            renderData = [];
+            activeWorkers = workerCount;
+
+            // Divide work among workers
+            const segmentHeight = Math.ceil(canvas.height / workerCount);
+
+            for (let i = 0; i < workerCount; i++) {
+                const startY = i * segmentHeight;
+                const endY = Math.min(startY + segmentHeight, canvas.height);
+
+                workers[i].postMessage({
+                    id: i,
+                    startY,
+                    endY,
+                    width: canvas.width,
+                    height: canvas.height,
+                    scale,
+                    offsetX: centerX,
+                    offsetY: centerY,
+                    maxIter: maxIterations,
+                    fontSize
+                });
+            }
+        }
+
+        // Render the calculated Mandelbrot data
+        function renderFrame() {
+            // Clear canvas
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Group points by iteration count for batch rendering
+            const iterationGroups = {};
+
+            for (const point of renderData) {
+                if (!iterationGroups[point.iteration]) {
+                    iterationGroups[point.iteration] = [];
+                }
+                iterationGroups[point.iteration].push(point);
+            }
+
+            // Render points sorted by iteration (outer to inner)
+            const iterations = Object.keys(iterationGroups).sort((a, b) => parseInt(a) - parseInt(b));
+
+            for (const iteration of iterations) {
+                const iter = parseInt(iteration);
+                const points = iterationGroups[iteration];
+
+                // Select color based on iteration count
+                const colorIndex = Math.min(colors.length - 1, Math.floor(iter * colors.length / maxIterations));
+                const color = colors[colorIndex];
+
+                // Select character based on iteration
+                const charIndex = iter % uniqueChars.length;
+                const char = uniqueChars[charIndex];
+
+                // Get pre-rendered character
+                const charImg = getCharImage(char, color);
+
+                // Batch render all points with same iteration
+                for (const point of points) {
+                    ctx.drawImage(charImg, point.col * fontSize, point.row * fontSize);
+                }
+            }
+
+            // Draw FPS info
+            drawFpsInfo();
+
+            // Advance to next frame
+            currentFrame = (currentFrame + 1) % totalFrames;
+
+            // Schedule next frame
+            requestAnimationFrame(startFrame);
+        }
+
+        // Draw FPS and frame information
+        function drawFpsInfo() {
+            // Background rectangle with rounded corners
+            ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+            ctx.beginPath();
+
+            if (ctx.roundRect) {
+                ctx.roundRect(10, 10, 200, 80, 10);
+            } else {
+                // Fallback for browsers without roundRect
+                ctx.moveTo(20, 10);
+                ctx.lineTo(190, 10);
+                ctx.arcTo(210, 10, 210, 30, 10);
+                ctx.lineTo(210, 70);
+                ctx.arcTo(210, 90, 190, 90, 10);
+                ctx.lineTo(20, 90);
+                ctx.arcTo(10, 90, 10, 70, 10);
+                ctx.lineTo(10, 30);
+                ctx.arcTo(10, 10, 30, 10, 10);
+            }
+
+            ctx.fill();
+
+            // Text information
+            ctx.fillStyle = "#000";
+            ctx.font = "14px Arial";
+            ctx.fillText(`FPS: ${Math.round(currentFps)}`, 20, 30);
+            ctx.fillText(`AVG FPS: ${avgFps.toFixed(2)}`, 20, 50);
+            ctx.fillText(`CURRENT FRAME: ${currentFrame + 1}/${totalFrames}`, 20, 70);
+        }
+
+        // Start the animation
+        startFrame();
+    </script>
+</body>
+
+</html>

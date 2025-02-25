@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        // 主线程代码
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 设置Canvas为全屏
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 网格尺寸（每个字符8x8像素）
+        const gridSize = 8;
+        const Gw = Math.floor(canvas.width / gridSize);  // 网格宽度
+        const Gh = Math.floor(canvas.height / gridSize); // 网格高度
+
+        // 从《静夜思》提取唯一字符，保留顺序，去除标点
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const characters = [...new Set(poem.split(''))]; // 去重并保持顺序
+        const numChars = characters.length; // 17个字符
+
+        // 颜色候选集（浅到深）
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+        const numColors = colors.length; // 20种颜色
+
+        // 创建字符精灵图
+        const spriteCanvas = document.createElement('canvas');
+        spriteCanvas.width = numChars * gridSize; // 17 * 8 = 136
+        spriteCanvas.height = numColors * gridSize; // 20 * 8 = 160
+        const spriteCtx = spriteCanvas.getContext('2d');
+        spriteCtx.font = '8px SimSun'; // 支持中文的字体
+        spriteCtx.textBaseline = 'top';
+        for (let colorIdx = 0; colorIdx < numColors; colorIdx++) {
+            spriteCtx.fillStyle = colors[colorIdx];
+            for (let charIdx = 0; charIdx < numChars; charIdx++) {
+                spriteCtx.fillText(
+                    characters[charIdx],
+                    charIdx * gridSize,
+                    colorIdx * gridSize
+                );
+            }
+        }
+
+        // 创建8个Web Workers
+        const workerScript = `
+            self.onmessage = function(e) {
+                const {row_start, row_end, left, W, top, H, max_iter, Gw, Gh} = e.data;
+                const result = [];
+                for (let j = row_start; j < row_end; j++) {
+                    for (let i = 0; i < Gw; i++) {
+                        const c_re = left + (i / Gw) * W;
+                        const c_im = top - (j / Gh) * H;
+                        let z_re = 0;
+                        let z_im = 0;
+                        let n = 0;
+                        while (n < max_iter) {
+                            const z_re2 = z_re * z_re;
+                            const z_im2 = z_im * z_im;
+                            if (z_re2 + z_im2 > 4) break;
+                            const z_re_new = z_re2 - z_im2 + c_re;
+                            const z_im_new = 2 * z_re * z_im + c_im;
+                            z_re = z_re_new;
+                            z_im = z_im_new;
+                            n++;
+                        }
+                        result.push(n);
+                    }
+                }
+                self.postMessage(result);
+            }
+        `;
+        const workerBlob = new Blob([workerScript], { type: 'application/javascript' });
+        const workerURL = URL.createObjectURL(workerBlob);
+        const workers = [];
+        for (let k = 0; k < 8; k++) {
+            workers.push(new Worker(workerURL));
+        }
+
+        // 动画参数
+        let frameCount = 0;
+        let S = 1; // 缩放因子
+        let startTime = performance.now();
+        let totalTime = 0;
+        let avgFps = 0;
+        const maxIter = 100; // 最大迭代次数
+        const centerRe = -0.75; // 主心形与周期2泡的交界处
+        const centerIm = 0;
+        const W0 = 3; // 初始宽度
+        const H0 = W0 * (canvas.height / canvas.width); // 保持宽高比
+
+        // 动画循环
+        function animate() {
+            frameCount++;
+            if (frameCount > 200) {
+                frameCount = 1;
+                S = 1;
+            } else if (frameCount > 1) {
+                S *= 1.005; // 每帧放大0.5%
+            }
+
+            // 计算当前可视区域
+            const W = W0 / S;
+            const H = H0 / S;
+            const left = centerRe - W / 2;
+            const top = centerIm + H / 2;
+
+            // 分发任务给Workers
+            const promises = workers.map((worker, k) => {
+                const rowStart = Math.floor(k * Gh / 8);
+                const rowEnd = Math.floor((k + 1) * Gh / 8);
+                return new Promise((resolve) => {
+                    worker.onmessage = (e) => resolve({ data: e.data, rowStart });
+                    worker.postMessage({
+                        row_start: rowStart,
+                        row_end: rowEnd,
+                        left,
+                        W,
+                        top,
+                        H,
+                        max_iter: maxIter,
+                        Gw,
+                        Gh
+                    });
+                });
+            });
+
+            Promise.all(promises).then((results) => {
+                // 清空Canvas，设置白色背景
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 绘制Mandelbrot Set
+                results.forEach(({ data, rowStart }) => {
+                    for (let idx = 0; idx < data.length; idx++) {
+                        const n = data[idx];
+                        if (n === maxIter) continue; // 内部留空
+                        const j = rowStart + Math.floor(idx / Gw);
+                        const i = idx % Gw;
+                        const charIdx = n % numChars;
+                        const colorIdx = 19 - Math.min(Math.floor(n * numColors / maxIter), 19);
+                        ctx.drawImage(
+                            spriteCanvas,
+                            charIdx * gridSize,
+                            colorIdx * gridSize,
+                            gridSize,
+                            gridSize,
+                            i * gridSize,
+                            j * gridSize,
+                            gridSize,
+                            gridSize
+                        );
+                    }
+                });
+
+                // 计算FPS
+                const currentTime = performance.now();
+                const deltaTime = (currentTime - startTime) / 1000;
+                const fps = 1 / deltaTime;
+                if (frameCount <= 200) {
+                    totalTime += deltaTime;
+                }
+                if (frameCount === 200) {
+                    avgFps = 200 / totalTime;
+                    totalTime = 0;
+                }
+                startTime = currentTime;
+
+                // 绘制指示器
+                ctx.globalAlpha = 0.5;
+                ctx.fillStyle = 'white';
+                ctx.fillRect(10, 10, 200, 50);
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = 'black';
+                ctx.font = '12px sans-serif';
+                ctx.fillText(`FPS: ${fps.toFixed(2)}`, 15, 25);
+                ctx.fillText(`AVG FPS: ${avgFps.toFixed(2)}`, 15, 40);
+                ctx.fillText(`CURRENT FRAME: ${frameCount}/200`, 15, 55);
+
+                // 下一帧
+                requestAnimationFrame(animate);
+            });
+        }
+
+        // 启动动画
+        animate();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Set Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+
+        #canvas {
+            display: block;
+            position: absolute;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            color: #000;
+            z-index: 100;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="stats">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>CURRENT FRAME: <span id="frameCount">0</span>/200</div>
+    </div>
+
+    <script>
+        // Setup canvas and context
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Disable alpha for better performance
+
+        // Make canvas full screen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Define poem characters (Li Bai's "Jing Ye Si" without duplicates and punctuation)
+        // 床前明月光，疑是地上霜。举头望明月，低头思故乡。
+        // After deduplication: 床前明月光疑是地上霜举头望低思故乡
+        const poemChars = "床前明月光疑是地上霜举头望低思故乡";
+
+        // Define color palette (from light to dark)
+        const colorPalette = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6",
+            "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+            "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073",
+            "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ];
+
+        // Setup Mandelbrot rendering parameters
+        const charSize = 8; // Size for character rendering
+        let scale = 0.5; // Start at 50% of screen size
+        const scaleIncrement = 0.005; // Increase by 0.5% each frame
+        const maxFrames = 200;
+        let currentFrame = 0;
+
+        // Mandelbrot calculation parameters
+        const maxIterations = 100;
+
+        // FPS calculation
+        let lastFrameTime = performance.now();
+        let fpsValues = [];
+        let fps = 0;
+        let avgFps = 0;
+
+        // Center coordinates (boundary between main cardioid and period bulbs at (-0.75, 0))
+        const centerX = -0.75;
+        const centerY = 0;
+
+        // Worker pool for parallel computation
+        const numWorkers = Math.min(8, navigator.hardwareConcurrency || 4);
+        let workers = [];
+        let pendingWorkers = 0;
+        let resultData = [];
+
+        // Create worker script
+        function createWorkerScript() {
+            return `
+                self.onmessage = function(e) {
+                    const {
+                        id,
+                        startRow,
+                        endRow,
+                        cols,
+                        centerX,
+                        centerY,
+                        halfSize,
+                        zoomFactor,
+                        maxIterations,
+                        charSize,
+                        poemLength
+                    } = e.data;
+                    
+                    // Helper functions
+                    function isInsideMainCardioid(x, y) {
+                        const q = (x - 0.25) * (x - 0.25) + y * y;
+                        return q * (q + (x - 0.25)) <= 0.25 * y * y;
+                    }
+                    
+                    function isInsidePeriod2Bulb(x, y) {
+                        const p = (x + 1) * (x + 1) + y * y;
+                        return p <= 0.0625; // 0.25²
+                    }
+                    
+                    function calculateMandelbrot(x0, y0, maxIter) {
+                        // Early bailout for main cardioid and period-2 bulb
+                        if (isInsideMainCardioid(x0, y0) || isInsidePeriod2Bulb(x0, y0)) {
+                            return -1;
+                        }
+                        
+                        let x = 0;
+                        let y = 0;
+                        let x2 = 0;
+                        let y2 = 0;
+                        let iteration = 0;
+                        
+                        while (x2 + y2 <= 4 && iteration < maxIter) {
+                            y = 2 * x * y + y0;
+                            x = x2 - y2 + x0;
+                            x2 = x * x;
+                            y2 = y * y;
+                            iteration++;
+                        }
+                        
+                        return iteration < maxIter ? iteration : -1;
+                    }
+                    
+                    const result = [];
+                    
+                    for (let row = startRow; row < endRow; row++) {
+                        for (let col = 0; col < cols; col++) {
+                            const x = (col * charSize - halfSize) * zoomFactor + centerX;
+                            const y = (row * charSize - halfSize) * zoomFactor + centerY;
+                            
+                            const iterations = calculateMandelbrot(x, y, maxIterations);
+                            
+                            if (iterations !== -1) {
+                                // Calculate color index (outer iterations get darker colors)
+                                const colorIndex = Math.floor(19 * (1 - iterations / maxIterations));
+                                
+                                // Calculate character index from the poem
+                                const charIndex = iterations % poemLength;
+                                
+                                result.push({
+                                    row,
+                                    col,
+                                    colorIndex,
+                                    charIndex
+                                });
+                            }
+                        }
+                    }
+                    
+                    self.postMessage({
+                        id,
+                        result
+                    });
+                };
+            `;
+        }
+
+        function initWorkers() {
+            const workerScript = createWorkerScript();
+            const blob = new Blob([workerScript], { type: 'application/javascript' });
+            const workerUrl = URL.createObjectURL(blob);
+
+            for (let i = 0; i < numWorkers; i++) {
+                const worker = new Worker(workerUrl);
+                worker.onmessage = handleWorkerMessage;
+                workers.push(worker);
+            }
+        }
+
+        function handleWorkerMessage(e) {
+            const { id, result } = e.data;
+            resultData[id] = result;
+            pendingWorkers--;
+
+            if (pendingWorkers === 0) {
+                drawMandelbrot();
+                calculateNextFrame();
+            }
+        }
+
+        function calculateNextFrame() {
+            // Update scale for next frame
+            currentFrame = (currentFrame + 1) % maxFrames;
+            if (currentFrame === 0) {
+                scale = 0.5; // Reset to initial scale
+            } else {
+                scale *= (1 + scaleIncrement); // Increase scale by 0.5%
+            }
+
+            // Start next calculation
+            startCalculation();
+        }
+
+        function startCalculation() {
+            const size = Math.min(canvas.width, canvas.height) * scale;
+            const halfSize = size / 2;
+
+            const cols = Math.floor(size / charSize);
+            const rows = Math.floor(size / charSize);
+
+            const zoomFactor = 3.0 / size;
+
+            resultData = new Array(numWorkers);
+            pendingWorkers = numWorkers;
+
+            // Divide work among workers by rows
+            const rowsPerWorker = Math.ceil(rows / numWorkers);
+
+            for (let i = 0; i < numWorkers; i++) {
+                const startRow = i * rowsPerWorker;
+                const endRow = Math.min(startRow + rowsPerWorker, rows);
+
+                workers[i].postMessage({
+                    id: i,
+                    startRow,
+                    endRow,
+                    cols,
+                    centerX,
+                    centerY,
+                    halfSize,
+                    zoomFactor,
+                    maxIterations,
+                    charSize,
+                    poemLength: poemChars.length
+                });
+            }
+        }
+
+        function drawMandelbrot() {
+            const now = performance.now();
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const size = Math.min(canvas.width, canvas.height) * scale;
+
+            // Starting position to center the Mandelbrot set
+            const startX = (canvas.width - size) / 2;
+            const startY = (canvas.height - size) / 2;
+
+            ctx.font = `${charSize}px monospace`;
+
+            // Group points by color for better performance
+            const colorGroups = {};
+
+            for (let i = 0; i < resultData.length; i++) {
+                const points = resultData[i];
+                if (!points) continue;
+
+                for (const point of points) {
+                    const { colorIndex } = point;
+                    if (!colorGroups[colorIndex]) {
+                        colorGroups[colorIndex] = [];
+                    }
+                    colorGroups[colorIndex].push(point);
+                }
+            }
+
+            // Draw by color groups to reduce context state changes
+            for (const colorIndex in colorGroups) {
+                ctx.fillStyle = colorPalette[colorIndex];
+
+                for (const point of colorGroups[colorIndex]) {
+                    const { row, col, charIndex } = point;
+                    const char = poemChars[charIndex];
+                    ctx.fillText(char, startX + col * charSize, startY + row * charSize);
+                }
+            }
+
+            // Calculate FPS
+            const frameTime = performance.now() - now;
+            fps = Math.round(1000 / (now - lastFrameTime));
+            lastFrameTime = now;
+            fpsValues.push(fps);
+
+            // Update stats display
+            document.getElementById('fps').textContent = fps;
+            document.getElementById('frameCount').textContent = currentFrame;
+
+            // Update average FPS after completing a full animation cycle
+            if (currentFrame === 0) {
+                avgFps = Math.round(fpsValues.reduce((a, b) => a + b, 0) / fpsValues.length);
+                document.getElementById('avgFps').textContent = avgFps;
+                fpsValues = [];
+            }
+        }
+
+        // Initialize and start animation
+        initWorkers();
+        startCalculation();
+    </script>
+</body>
+
+</html>

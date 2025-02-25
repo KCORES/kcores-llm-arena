@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #fps {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+            font-family: monospace;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="fps"></div>
+    <canvas id="canvas"></canvas>
+    <script>
+        // 处理《静夜思》文本
+        function processPoem(poem) {
+            const chars = [];
+            const seen = new Set();
+            for (const c of poem) {
+                if (c.trim() && !/[，。]/.test(c) && !seen.has(c)) {
+                    chars.push(c);
+                    seen.add(c);
+                }
+            }
+            return chars;
+        }
+        const poem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+        const chars = processPoem(poem);
+
+        // 颜色数组反转，从深到浅
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde", "#8491c3",
+            "#867ba9", "#68699b", "#706caa", "#5654a2", "#4d4398", "#4a488e", "#274a78",
+            "#2a4073", "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ].reverse();
+
+        // canvas设置
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = 'top';
+        ctx.font = '8px monospace';
+
+        function resizeCanvas() {
+            canvas.width = Math.floor(window.innerWidth / 8);
+            canvas.height = Math.floor(window.innerHeight / 8);
+            ctx.scale(8, 8);
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mandelbrot参数
+        const maxIter = 500;
+        let frame = 0;
+        const maxFrames = 200;
+        let scale = 1;
+        const centerX = -0.75;
+        const centerY = 0;
+        let currentWidth = 1;
+        let currentHeight = 1;
+
+        // 判断是否在排除区域
+        function isExcluded(c) {
+            const x = c.re;
+            const y = c.im;
+            // 主心脏形近似条件
+            const inMainCardioid = (x + 0.25) ** 2 + y ** 2 <= 0.0625;
+            // 周期2球体
+            const inPeriod2Bulb = (x + 1) ** 2 + y ** 2 <= 0.0625;
+            return inMainCardioid || inPeriod2Bulb;
+        }
+
+        // Mandelbrot迭代
+        function mandelbrot(c, maxIter) {
+            let z = { re: 0, im: 0 };
+            let n = 0;
+            while (n < maxIter) {
+                const re = z.re * z.re - z.im * z.im + c.re;
+                const im = 2 * z.re * z.im + c.im;
+                z = { re, im };
+                if (z.re * z.re + z.im * z.im > 4) break;
+                n++;
+            }
+            return n;
+        }
+
+        // 动画循环
+        let lastTime = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let totalFrames = 0;
+        let totalTime = 0;
+
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+
+            if (!lastTime) lastTime = currentTime;
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+
+            fps = 1000 / deltaTime;
+            totalFrames++;
+            totalTime += deltaTime;
+
+            if (frame >= maxFrames) {
+                avgFps = totalFrames / (totalTime / 1000);
+                resetAnimation();
+                totalFrames = 0;
+                totalTime = 0;
+            }
+
+            updateFPSDisplay(fps, avgFps, frame);
+
+            // 清除canvas
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制Mandelbrot集
+            const aspectRatio = canvas.width / canvas.height;
+            const scaleX = currentWidth / canvas.width;
+            const scaleY = currentHeight / canvas.height;
+
+            for (let x = 0; x < canvas.width; x++) {
+                for (let y = 0; y < canvas.height; y++) {
+                    // 计算复数坐标
+                    const re = centerX + (x - canvas.width / 2) * scaleX * aspectRatio;
+                    const im = centerY - (y - canvas.height / 2) * scaleY;
+                    const c = { re, im };
+
+                    // 判断是否在排除区域
+                    if (isExcluded(c)) {
+                        continue;
+                    }
+
+                    // 计算迭代次数
+                    const iter = mandelbrot(c, maxIter);
+
+                    if (iter === maxIter) {
+                        continue;
+                    }
+
+                    // 选择颜色和字符
+                    const colorIndex = Math.floor((iter / maxIter) * (colors.length - 1));
+                    const color = colors[colorIndex];
+                    const charIndex = iter % chars.length;
+                    const char = chars[charIndex];
+
+                    // 绘制字符
+                    ctx.fillStyle = color;
+                    ctx.fillText(char, x, y);
+                }
+            }
+
+            // 更新参数
+            scale *= 1.005;
+            currentWidth = 1 / scale;
+            currentHeight = 1 / scale;
+            frame++;
+            if (frame > maxFrames) {
+                frame = 0;
+                scale = 1;
+                currentWidth = 1;
+                currentHeight = 1;
+            }
+        }
+
+        function resetAnimation() {
+            frame = 0;
+            scale = 1;
+            currentWidth = 1;
+            currentHeight = 1;
+        }
+
+        function updateFPSDisplay(fps, avgFps, frame) {
+            const fpsDiv = document.getElementById('fps');
+            fpsDiv.textContent = `FPS: ${fps.toFixed(1)}\nAVG FPS: ${avgFps.toFixed(1)}\nCURRENT FRAME: ${frame}/200`;
+        }
+
+        // 启动动画
+        animate();
+    </script>
+</body>
+
+</html>
