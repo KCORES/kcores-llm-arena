@@ -2,368 +2,238 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.colors as colors
 
-# Constants
-AU = 149.6e6  # Astronomical Unit in km
-EARTH_RADIUS = 6371  # km (not to scale in visualization)
-MARS_RADIUS = 3389.5  # km (not to scale in visualization)
-SUN_RADIUS = 696340  # km (not to scale in visualization)
+# Constants (in AU, years, and Earth masses)
+G = 4 * np.pi**2  # Gravitational constant in AU^3/year^2/solar_mass
+sun_mass = 333000  # Sun mass in Earth masses
 
 # Orbital parameters
-EARTH_SEMI_MAJOR_AXIS = 1.0 * AU
-EARTH_ECCENTRICITY = 0.0167
-EARTH_ORBITAL_PERIOD = 365.25  # days
-EARTH_INCLINATION = np.radians(0.0)  # Earth's orbit defines the reference plane
+earth_semi_major = 1.0  # AU
+earth_period = 1.0  # years
+earth_ecc = 0.0167
 
-MARS_SEMI_MAJOR_AXIS = 1.524 * AU
-MARS_ECCENTRICITY = 0.0934
-MARS_ORBITAL_PERIOD = 687  # days
-MARS_INCLINATION = np.radians(1.85)  # Mars' orbit is slightly inclined
+mars_semi_major = 1.524  # AU
+mars_period = 1.88  # years
+mars_ecc = 0.0934
 
-# Mission parameters
-EARTH_TO_MARS_TRANSFER_TIME = 259  # days
-STAY_ON_MARS = 500  # days (waiting for next launch window)
-MARS_TO_EARTH_TRANSFER_TIME = 239  # days
 
-TOTAL_MISSION_TIME = (
-    EARTH_TO_MARS_TRANSFER_TIME + STAY_ON_MARS + MARS_TO_EARTH_TRANSFER_TIME
-)
-NUM_FRAMES = 360  # Total frames for animation
+def orbital_position(semi_major, ecc, period, time):
+    """Calculate position in orbital plane at given time"""
+    # Mean anomaly
+    M = 2 * np.pi * time / period
 
-# Create figure and 3D axis
-plt.style.use("dark_background")  # Space is dark!
-fig = plt.figure(figsize=(12, 10))
+    # Solve Kepler's equation iteratively for eccentric anomaly E
+    E = M
+    for i in range(10):  # Usually converges quickly
+        E = M + ecc * np.sin(E)
+
+    # True anomaly
+    v = 2 * np.atan2(np.sqrt(1 + ecc) * np.sin(E / 2), np.sqrt(1 - ecc) * np.cos(E / 2))
+
+    # Distance from focus
+    r = semi_major * (1 - ecc * np.cos(E))
+
+    # Position in orbital plane
+    x = r * np.cos(v)
+    y = r * np.sin(v)
+    return x, y, 0  # z=0 for simple 2D orbits in 3D space
+
+
+# Calculate Hohmann transfer orbit Earth to Mars
+def hohmann_transfer(r1, r2, time_offset, time, duration):
+    """Calculate transfer orbit position at given time"""
+    a_transfer = (r1 + r2) / 2
+    period_transfer = np.sqrt(a_transfer**3 / sun_mass) * 2 * np.pi
+
+    # Transfer duration is half the period
+    half_period = period_transfer / 2
+
+    # Check if we're in the transfer window
+    rel_time = time - time_offset
+    if 0 <= rel_time <= half_period and rel_time <= duration:
+        # Mean anomaly (starts at perihelion)
+        M = 2 * np.pi * rel_time / period_transfer
+
+        # Solve Kepler's equation for eccentric anomaly E
+        E = M
+        for i in range(10):
+            E = M + (r2 - r1) / (r2 + r1) * np.sin(E)
+
+        # Position on transfer ellipse
+        v = 2 * np.atan2(np.sqrt((r2 + r1) / (r2 - r1)) * np.sin(E / 2), np.cos(E / 2))
+        r = a_transfer * (1 - (r2 - r1) / (r2 + r1) * np.cos(E))
+
+        x = r * np.cos(v)
+        y = r * np.sin(v)
+        return x, y, 0, True
+    else:
+        return 0, 0, 0, False
+
+
+# Setup the figure and 3D axis
+fig = plt.figure(figsize=(12, 8))
 ax = fig.add_subplot(111, projection="3d")
 
+# Time parameters for simulation
+time_span = 4  # years
+time_step = 0.01
+times = np.arange(0, time_span, time_step)
 
-# Function to calculate position in elliptical orbit with inclination
-def get_orbit_position(semi_major_axis, eccentricity, inclination, true_anomaly):
-    # Calculate radius from focus
-    r = (
-        semi_major_axis
-        * (1 - eccentricity**2)
-        / (1 + eccentricity * np.cos(true_anomaly))
-    )
+# Starting positions - offset Mars by π/2
+earth_offset = 0
+mars_offset = np.pi / 2
 
-    # Convert to Cartesian coordinates
-    x = r * np.cos(true_anomaly)
-    y = r * np.sin(true_anomaly) * np.cos(inclination)
-    z = r * np.sin(true_anomaly) * np.sin(inclination)
+# Launch windows (approximate)
+earth_to_mars_launch = 0.3  # years
+mars_to_earth_launch = 2.0  # years
+transfer_duration = 0.8  # years
 
-    return x, y, z
+# Create the Sun
+sun = ax.scatter([0], [0], [0], color="yellow", s=300, label="Sun")
 
+# Initialize planet and spacecraft plots
+earth_plot = ax.plot([], [], [], "bo", markersize=8, label="Earth")[0]
+mars_plot = ax.plot([], [], [], "ro", markersize=6, label="Mars")[0]
+spacecraft_plot = ax.plot([], [], [], "ko", markersize=4, label="Spacecraft")[0]
 
-# Function to calculate planet positions at given time
-def calculate_planet_positions(t_days):
-    # Calculate true anomaly for each planet
-    earth_anomaly = 2 * np.pi * t_days / EARTH_ORBITAL_PERIOD
-    mars_anomaly = (
-        2 * np.pi * t_days / MARS_ORBITAL_PERIOD + 0.5
-    )  # Phase offset for Mars
+# Trajectories
+earth_trajectory = ax.plot([], [], [], "b-", alpha=0.3)[0]
+mars_trajectory = ax.plot([], [], [], "r-", alpha=0.3)[0]
+spacecraft_trajectory = ax.plot([], [], [], "k-", alpha=0.5)[0]
 
-    # Get positions
-    earth_x, earth_y, earth_z = get_orbit_position(
-        EARTH_SEMI_MAJOR_AXIS, EARTH_ECCENTRICITY, EARTH_INCLINATION, earth_anomaly
-    )
-    mars_x, mars_y, mars_z = get_orbit_position(
-        MARS_SEMI_MAJOR_AXIS, MARS_ECCENTRICITY, MARS_INCLINATION, mars_anomaly
-    )
-
-    return earth_x, earth_y, earth_z, mars_x, mars_y, mars_z
+# Storage for spacecraft trajectory
+spacecraft_path = []
 
 
-# Calculate transfer orbit parameters
-def calculate_transfer_orbit(
-    r1,
-    r2,
-    departure_anomaly,
-    arrival_anomaly,
-    progress,
-    inclination_start,
-    inclination_end,
-):
-    # Semi-major axis of transfer orbit
-    a_transfer = (r1 + r2) / 2
-
-    # Eccentricity
-    e_transfer = abs(r2 - r1) / (r2 + r1)
-
-    # Current anomaly based on interpolation (this is a simplification)
-    current_anomaly = departure_anomaly + progress * (
-        arrival_anomaly - departure_anomaly
-    )
-
-    # Interpolate inclination
-    current_inclination = inclination_start + progress * (
-        inclination_end - inclination_start
-    )
-
-    # Get position on transfer orbit
-    x, y, z = get_orbit_position(
-        a_transfer, e_transfer, current_inclination, current_anomaly
-    )
-
-    # Add additional z-component for visualization
-    z_boost = 0.05 * AU * np.sin(np.pi * progress)
-    z += z_boost
-
-    return x, y, z
-
-
-# Function to calculate spacecraft position
-def calculate_spacecraft_position(t_days):
-    if t_days < EARTH_TO_MARS_TRANSFER_TIME:
-        # Earth to Mars transfer
-        progress = t_days / EARTH_TO_MARS_TRANSFER_TIME
-
-        # Get positions at departure and arrival
-        earth_x_dep, earth_y_dep, earth_z_dep, _, _, _ = calculate_planet_positions(0)
-        _, _, _, mars_x_arr, mars_y_arr, mars_z_arr = calculate_planet_positions(
-            EARTH_TO_MARS_TRANSFER_TIME
-        )
-
-        r1 = np.sqrt(earth_x_dep**2 + earth_y_dep**2 + earth_z_dep**2)
-        r2 = np.sqrt(mars_x_arr**2 + mars_y_arr**2 + mars_z_arr**2)
-
-        departure_anomaly = 0
-        arrival_anomaly = np.pi
-
-        x, y, z = calculate_transfer_orbit(
-            r1,
-            r2,
-            departure_anomaly,
-            arrival_anomaly,
-            progress,
-            EARTH_INCLINATION,
-            MARS_INCLINATION,
-        )
-
-    elif t_days < EARTH_TO_MARS_TRANSFER_TIME + STAY_ON_MARS:
-        # On Mars
-        mars_time = t_days
-        _, _, _, x, y, z = calculate_planet_positions(mars_time)
-
-    else:
-        # Mars to Earth transfer
-        return_time = t_days - (EARTH_TO_MARS_TRANSFER_TIME + STAY_ON_MARS)
-        progress = return_time / MARS_TO_EARTH_TRANSFER_TIME
-
-        # Get positions at departure and arrival
-        _, _, _, mars_x_dep, mars_y_dep, mars_z_dep = calculate_planet_positions(
-            EARTH_TO_MARS_TRANSFER_TIME + STAY_ON_MARS
-        )
-        earth_x_arr, earth_y_arr, earth_z_arr, _, _, _ = calculate_planet_positions(
-            TOTAL_MISSION_TIME
-        )
-
-        r1 = np.sqrt(mars_x_dep**2 + mars_y_dep**2 + mars_z_dep**2)
-        r2 = np.sqrt(earth_x_arr**2 + earth_y_arr**2 + earth_z_arr**2)
-
-        departure_anomaly = np.pi
-        arrival_anomaly = 2 * np.pi
-
-        x, y, z = calculate_transfer_orbit(
-            r1,
-            r2,
-            departure_anomaly,
-            arrival_anomaly,
-            progress,
-            MARS_INCLINATION,
-            EARTH_INCLINATION,
-        )
-
-    return x, y, z
-
-
-# Calculate and store orbit paths
-def calculate_orbit_paths():
-    theta = np.linspace(0, 2 * np.pi, 100)
-
-    earth_x, earth_y, earth_z = [], [], []
-    mars_x, mars_y, mars_z = [], [], []
-
-    for angle in theta:
-        ex, ey, ez = get_orbit_position(
-            EARTH_SEMI_MAJOR_AXIS, EARTH_ECCENTRICITY, EARTH_INCLINATION, angle
-        )
-        mx, my, mz = get_orbit_position(
-            MARS_SEMI_MAJOR_AXIS, MARS_ECCENTRICITY, MARS_INCLINATION, angle
-        )
-
-        earth_x.append(ex)
-        earth_y.append(ey)
-        earth_z.append(ez)
-
-        mars_x.append(mx)
-        mars_y.append(my)
-        mars_z.append(mz)
-
-    return earth_x, earth_y, earth_z, mars_x, mars_y, mars_z
-
-
-# Calculate orbit paths
-(
-    earth_orbit_x,
-    earth_orbit_y,
-    earth_orbit_z,
-    mars_orbit_x,
-    mars_orbit_y,
-    mars_orbit_z,
-) = calculate_orbit_paths()
-
-# Spacecraft trail storage
-spacecraft_trail_x, spacecraft_trail_y, spacecraft_trail_z = [], [], []
-
-
-# Draw a sphere for celestial bodies
-def plot_sphere(ax, x, y, z, radius, color):
-    u = np.linspace(0, 2 * np.pi, 20)
-    v = np.linspace(0, np.pi, 20)
-
-    x_surface = x + radius * np.outer(np.cos(u), np.sin(v))
-    y_surface = y + radius * np.outer(np.sin(u), np.sin(v))
-    z_surface = z + radius * np.outer(np.ones(np.size(u)), np.cos(v))
-
-    ax.plot_surface(x_surface, y_surface, z_surface, color=color, alpha=0.9)
-
-
-# Initialize the plot
+# Initialize function
 def init():
-    ax.clear()
+    # Calculate and plot full orbits
+    t_orbit = np.linspace(0, 2 * np.pi, 1000)
 
-    # Plot Sun (scaled for visualization)
-    sun_vis_radius = 0.1 * AU
-    plot_sphere(ax, 0, 0, 0, sun_vis_radius, "yellow")
+    # Earth orbit
+    x_earth = earth_semi_major * np.cos(t_orbit)
+    y_earth = earth_semi_major * np.sin(t_orbit)
+    earth_trajectory.set_data(x_earth, y_earth)
+    earth_trajectory.set_3d_properties(np.zeros_like(t_orbit))
 
-    # Plot orbit paths
-    ax.plot(earth_orbit_x, earth_orbit_y, earth_orbit_z, color="blue", alpha=0.3)
-    ax.plot(mars_orbit_x, mars_orbit_y, mars_orbit_z, color="red", alpha=0.3)
+    # Mars orbit
+    x_mars = mars_semi_major * np.cos(t_orbit)
+    y_mars = mars_semi_major * np.sin(t_orbit)
+    mars_trajectory.set_data(x_mars, y_mars)
+    mars_trajectory.set_3d_properties(np.zeros_like(t_orbit))
 
-    # Set labels
-    ax.set_xlabel("X (km)")
-    ax.set_ylabel("Y (km)")
-    ax.set_zlabel("Z (km)")
+    # Set axis limits
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(-2, 2)
+    ax.set_zlim(-0.5, 0.5)
 
-    # Set limits
-    limit = 1.8 * AU
-    ax.set_xlim(-limit, limit)
-    ax.set_ylim(-limit, limit)
-    ax.set_zlim(-0.5 * AU, 0.5 * AU)
+    ax.set_xlabel("X (AU)")
+    ax.set_ylabel("Y (AU)")
+    ax.set_zlabel("Z (AU)")
+    ax.set_title("Earth to Mars Round Trip Mission")
 
-    # Remove axis grid and ticks for cleaner look
-    ax.grid(False)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_zticks([])
-
-    # Title
-    ax.set_title("Earth to Mars Round Trip Mission", fontsize=16, color="white")
-
-    return []
+    return earth_trajectory, mars_trajectory, spacecraft_trajectory
 
 
-# Update function for animation
+# Animation update function
 def update(frame):
-    # Calculate time in days
-    t_days = frame * TOTAL_MISSION_TIME / NUM_FRAMES
+    time = times[frame]
 
-    # Clear previous plot elements
-    init()
-
-    # Get positions
-    earth_x, earth_y, earth_z, mars_x, mars_y, mars_z = calculate_planet_positions(
-        t_days
+    # Calculate Earth and Mars positions
+    x_earth, y_earth, z_earth = orbital_position(
+        earth_semi_major, earth_ecc, earth_period, time + earth_offset
     )
-    spacecraft_x, spacecraft_y, spacecraft_z = calculate_spacecraft_position(t_days)
-
-    # Plot Earth and Mars (scaled for visualization)
-    earth_vis_radius = 0.03 * AU
-    mars_vis_radius = 0.02 * AU
-
-    plot_sphere(ax, earth_x, earth_y, earth_z, earth_vis_radius, "blue")
-    plot_sphere(ax, mars_x, mars_y, mars_z, mars_vis_radius, "red")
-
-    # Plot spacecraft
-    spacecraft = ax.scatter(
-        [spacecraft_x],
-        [spacecraft_y],
-        [spacecraft_z],
-        color="white",
-        s=30,
-        edgecolor="cyan",
+    x_mars, y_mars, z_mars = orbital_position(
+        mars_semi_major, mars_ecc, mars_period, time + mars_offset
     )
 
-    # Update trail
-    spacecraft_trail_x.append(spacecraft_x)
-    spacecraft_trail_y.append(spacecraft_y)
-    spacecraft_trail_z.append(spacecraft_z)
+    # Update planet positions
+    earth_plot.set_data([x_earth], [y_earth])
+    earth_plot.set_3d_properties([z_earth])
 
-    # Limit trail length
-    trail_length = 150
-    if len(spacecraft_trail_x) > trail_length:
-        spacecraft_trail_x.pop(0)
-        spacecraft_trail_y.pop(0)
-        spacecraft_trail_z.pop(0)
+    mars_plot.set_data([x_mars], [y_mars])
+    mars_plot.set_3d_properties([z_mars])
 
-    # Plot trail with gradient color
-    if len(spacecraft_trail_x) > 1:
-        segments_x = spacecraft_trail_x
-        segments_y = spacecraft_trail_y
-        segments_z = spacecraft_trail_z
+    # Spacecraft logic - check if in transfer or with a planet
+    if time < earth_to_mars_launch:
+        # Spacecraft is on Earth
+        x_sc, y_sc, z_sc = x_earth, y_earth, z_earth
 
-        # Create gradient colors
-        colors_array = plt.cm.cool(np.linspace(0, 1, len(segments_x)))
+    elif time < earth_to_mars_launch + transfer_duration:
+        # First transfer: Earth to Mars
+        earth_pos = orbital_position(
+            earth_semi_major,
+            earth_ecc,
+            earth_period,
+            earth_to_mars_launch + earth_offset,
+        )
+        mars_pos = orbital_position(
+            mars_semi_major,
+            mars_ecc,
+            mars_period,
+            earth_to_mars_launch + transfer_duration + mars_offset,
+        )
 
-        # Plot trail segments with gradient colors
-        for i in range(len(segments_x) - 1):
-            ax.plot(
-                segments_x[i : i + 2],
-                segments_y[i : i + 2],
-                segments_z[i : i + 2],
-                color=colors_array[i],
-                alpha=(i / len(segments_x)) ** 1.5 + 0.3,
-                linewidth=2,
-            )
+        x_sc, y_sc, z_sc, _ = hohmann_transfer(
+            earth_semi_major,
+            mars_semi_major,
+            earth_to_mars_launch,
+            time,
+            transfer_duration,
+        )
 
-    # Add mission phase text
-    if t_days < EARTH_TO_MARS_TRANSFER_TIME:
-        progress = int(100 * t_days / EARTH_TO_MARS_TRANSFER_TIME)
-        phase_txt = f"Earth to Mars Transfer: Day {int(t_days)} / {int(EARTH_TO_MARS_TRANSFER_TIME)} [{progress}%]"
-    elif t_days < EARTH_TO_MARS_TRANSFER_TIME + STAY_ON_MARS:
-        mars_day = t_days - EARTH_TO_MARS_TRANSFER_TIME
-        progress = int(100 * mars_day / STAY_ON_MARS)
-        phase_txt = f"Mars Surface Operations: Day {int(mars_day)} / {int(STAY_ON_MARS)} [{progress}%]"
+    elif time < mars_to_earth_launch:
+        # Spacecraft is on Mars
+        x_sc, y_sc, z_sc = x_mars, y_mars, z_mars
+
+    elif time < mars_to_earth_launch + transfer_duration:
+        # Second transfer: Mars to Earth
+        mars_pos = orbital_position(
+            mars_semi_major, mars_ecc, mars_period, mars_to_earth_launch + mars_offset
+        )
+        earth_pos = orbital_position(
+            earth_semi_major,
+            earth_ecc,
+            earth_period,
+            mars_to_earth_launch + transfer_duration + earth_offset,
+        )
+
+        # Reverse direction for return journey
+        x_sc, y_sc, z_sc, _ = hohmann_transfer(
+            mars_semi_major,
+            earth_semi_major,
+            mars_to_earth_launch,
+            time,
+            transfer_duration,
+        )
+
     else:
-        return_day = t_days - (EARTH_TO_MARS_TRANSFER_TIME + STAY_ON_MARS)
-        progress = int(100 * return_day / MARS_TO_EARTH_TRANSFER_TIME)
-        phase_txt = f"Mars to Earth Return: Day {int(return_day)} / {int(MARS_TO_EARTH_TRANSFER_TIME)} [{progress}%]"
+        # Back on Earth
+        x_sc, y_sc, z_sc = x_earth, y_earth, z_earth
 
-    # Add text for phase information
-    plt.figtext(0.5, 0.02, phase_txt, ha="center", fontsize=14, color="white")
+    # Update spacecraft position
+    spacecraft_plot.set_data([x_sc], [y_sc])
+    spacecraft_plot.set_3d_properties([z_sc])
 
-    # Add mission day counter
-    day_txt = f"Mission Day: {int(t_days)} / {int(TOTAL_MISSION_TIME)}"
-    plt.figtext(0.5, 0.06, day_txt, ha="center", fontsize=12, color="white")
+    # Add point to spacecraft trajectory
+    spacecraft_path.append((x_sc, y_sc, z_sc))
+    if len(spacecraft_path) > 1:
+        x_path, y_path, z_path = zip(*spacecraft_path)
+        spacecraft_trajectory.set_data(x_path, y_path)
+        spacecraft_trajectory.set_3d_properties(z_path)
 
-    # Rotate view for more dynamic visualization
-    azimuth = frame % 360
-    elevation = 20 + 10 * np.sin(frame * 0.02)
-    ax.view_init(elev=elevation, azim=azimuth)
-
-    return [spacecraft]
+    return earth_plot, mars_plot, spacecraft_plot, spacecraft_trajectory
 
 
 # Create animation
-anim = FuncAnimation(
-    fig, update, frames=NUM_FRAMES, init_func=init, interval=50, blit=False
+ani = FuncAnimation(
+    fig, update, frames=len(times), init_func=init, interval=20, blit=True
 )
 
-# Save animation as GIF or MP4
-# MP4 requires ffmpeg to be installed
-anim.save("mars_mission_trajectory.mp4", writer="ffmpeg", fps=30, dpi=100)
-# For GIF alternative:
-# anim.save('mars_mission_trajectory.gif', writer='pillow', fps=30, dpi=80)
+# Add a legend
+ax.legend()
 
-plt.tight_layout()
 plt.show()
+
+# Uncomment to save animation
+# ani.save('earth_mars_mission.mp4', writer='ffmpeg', fps=30)
