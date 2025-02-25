@@ -83,7 +83,7 @@ Mandelbrot Set Meet LiBai 测试
 | claude-3.5-sonnet | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (书写不正确) | 5 (Set 在浏览器实际实践中保证了顺序) | 5 | 0 (画面中心不在交界处) | 5 | 5 | 5 | 5 | 13 | 86 | 
 | Qwen-2.5-Max | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5| 5 | 5 | 5 | 5 | 3 (颜色顺序搞错了) |  5 | 5 | 12 | 90 |
 | Grok-2 | 5 | 5 | 5 | 4 (长宽比例不等) | 1 (只能看到 Main cardioid) | 5 | 5 | 5 | 5 | 3 (未去重, 未保留顺序) | 5 | 0 (画面中心不在交界处) | 5 | 3 (颜色不正确) | 5 | 5 | 1 (-15, 看不到完整的 period-2 bulb) | 67 | 
-| Grok-3 | 5 | 5 | 5 | 4 (长宽比例不等) | 5 | 3 (放大只是字符放大了, 重绘有问题) | 5 | 5 | 5 | 5 | 5 | 0 (画面中心不在交界处) | 2 (及字体大小正确, 其余渲染都有问题) | 3 (颜色不正确) | 5 | 5 | 0 | 67 | 
+| Grok-3 | 5 | 5 | 5 | 4 (长宽比例不等) | 5 | 3 (放大只是字符放大了, 重绘有问题) | 5 | 5 | 5 | 5 | 5 | 0 (画面中心不在交界处) | 2 (及字体大小正确, 其余渲染都有问题) | 3 (颜色不正确) | 5 | 5 | 0 (-25, 最外部没有使用文本渲染) | 67 | 
 | Grok-3-Reasoning | 5 | 5 | 5 | 5 | 4 (过大, 但能看到period-3 bulb) | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (颜色不正确) | 5 | 3 (边框不是圆角的) | 13 (-10, 过大, 但能看到完整的 period-2 bulb) | 88 | 
 | Claude-3.7-Sonnet-Thinking | 5 | 5 | 5 | 5 | 4 (过大, 但能看到period-3 bulb) | 5 | 5 | 5 | 5 | 5 | 3 (Period-3/4 bulb 未留空) | 5 | 5 | 5 | 5 | 5 | 18 | 95 | 
 | Claude-3.7-Sonnet | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (Period-3/4 bulb 未留空) | 5 | 5 | 5 | 0 (计算不正确) | 5 | 9 | 82 | 
@@ -96,28 +96,32 @@ Mandelbrot Set Meet LiBai 测试
 
 - 整体结果, FPS 数据占比较大, 体现了模型的代码优化水平
 
-![](./assets/images/llm_benchmark_results.png)
+![](./scripts/llm_benchmark_results.png)
 
 - 不包含 FPS 数据结果, 体现了 LLM 在需求还原上的表现
 
-![](./assets/images/llm_benchmark_results_without_fps.png)
+![](./scripts/llm_benchmark_results_without_fps.png)
 
 
 
 ## 结论
 
-- 从目视来讲, 效果最好的是 DeepSeek-R1 和 Qwen-2.5-Max. 其中 DeepSeek-R1 的代码性能最高, 而 Qwen-2.5-Max 的需求还原能力最高, 并且在全部测试项中与 DeepSeek-R1分数一致, 仅有颜色顺序搞错了这一项扣分点. 
-- 两种统计方式中, claude-3.5-sonnet 稳坐第三名, 从实际目视来讲, claude-3.5-sonnet 也的确给出了很不错的效果 (除了没有按要求居中动画和唐诗能力不太行以外, 其他表现均不错). 
+**last update at 2025-02-25**
+
+- 从目视来讲, 效果最好的是 Claude-3.7-Sonnet-Thinking 和 Qwen-2.5-Max. 其中 Claude-3.7-Sonnet-Thinking 的代码性能最高, 而 Qwen-2.5-Max 的需求还原能力最高. 
+- 两种统计方式中, Claude-3.7-Sonnet-Thinking 表现十分稳定, 是编程首选. 
 - 代码质量上 (注意不是代码水平而是代码质量), OpenAI-o1 当之无愧是第一名, 达到了一流开源软件的代码质量.
 - Gemini 综合质量垫底, 新出的 02-05 版本甚至没有 Gemini-2.0-Flash 和 Gemini-2.0-Flash-Thinking-Experimental-01-21 表现好. 
-- 综合来讲本测试项目中最优秀的模型是 Qwen-2.5-Max.
+- DeepSeek 随着其他模型的发布, 被追赶上了, 需要赶紧发布新版本了.
+- Grok 必须使用 Grok-3-Reasoning, 否则编程能力很一般.
+- 综合来讲本测试项目中最优秀的模型是 Claude-3.7-Sonnet-Thinking.
 
 
 
 
 ## Winner
 
+**👑Claude-3.7-Sonnet-Thinking**
 
-Qwen-2.5-Max
 
 
