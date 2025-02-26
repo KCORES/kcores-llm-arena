@@ -18,7 +18,7 @@ KCORES LLM Arena - KCORES 大模型竞技场
 
 - [Mandelbrot Set Meet LiBai](./benchmark-mandelbrot-set-meet-libai/README.md)
 
-![Mandelbrot Set Meet LiBai](./benchmark-mandelbrot-set-meet-libai/assets/images/llm_benchmark_results.png)
+![Mandelbrot Set Meet LiBai](./benchmark-mandelbrot-set-meet-libai/scripts/llm_benchmark_results.png)
 
 
 - [Mars Mission](./benchmark-mars-mission/README.md)
