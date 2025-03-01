@@ -122,10 +122,19 @@ Solar System Animation 测试
 
 ## 可视化结果
 
+![](./scripts/llm_benchmark_results.png)
+
 
 ## 结论
 
+**Gemini-2.0-Flash-Thinking-Experimental-01-21** 表现最佳, 没有犯任何错误
 
+![](./assets/images/Gemini-2.0-Flash-Thinking-Experimental-01-21-demo-screenshot.png)
+
+**Claude-3.7-Sonnet-Thinking** 则犯了不少错误, 包括地球公转速度过快, AVE FPS 计算错误
+
+![](./assets/images/Claude-3.7-Sonnet-Thinking-demo-screenshot.png)
 
 ## Winner
 
+**👑Gemini-2.0-Flash-Thinking-Experimental-01-21**
