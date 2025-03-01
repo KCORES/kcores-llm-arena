@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mandelbrot ASCII 动画</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fpsCounter {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            padding: 5px 10px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #000;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fpsCounter">FPS: 0 | AVG FPS: 0 | CURRENT FRAME: 0/200</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const chars = [...new Set(poem)];
+        const colors = ['#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'].reverse();
+
+        const maxIter = colors.length;
+        const fontSize = 8;
+        ctx.font = `${fontSize}px monospace`;
+        ctx.textBaseline = 'top';
+
+        let scaleFactor = 0.5;
+        let frameCount = 0;
+        let fps, avgFps, lastTime = performance.now(), fpsSum = 0;
+
+        function mandelbrot(x, y) {
+            let real = x, imag = y, iter = 0;
+            while (real * real + imag * imag <= 4 && iter < maxIter) {
+                [real, imag] = [real * real - imag * imag + x, 2 * real * imag + y];
+                iter++;
+            }
+            return iter;
+        }
+
+        function render() {
+            const startTime = performance.now();
+            const w = canvas.width, h = canvas.height;
+            const aspect = w / h;
+            const scale = 3 / (Math.min(w, h) * scaleFactor);
+            const offsetX = -0.75, offsetY = 0;
+
+            ctx.clearRect(0, 0, w, h);
+
+            for (let y = 0; y < h; y += fontSize) {
+                for (let x = 0; x < w; x += fontSize) {
+                    const mx = (x - w / 2) * scale + offsetX;
+                    const my = (y - h / 2) * scale + offsetY;
+                    const iter = mandelbrot(mx, my);
+
+                    if (iter < maxIter && iter > 2) {
+                        ctx.fillStyle = colors[iter - 1];
+                        const char = chars[(iter - 1) % chars.length];
+                        ctx.fillText(char, x, y);
+                    }
+                }
+            }
+
+            const endTime = performance.now();
+            fps = 1000 / (endTime - lastTime);
+            fpsSum += fps;
+            lastTime = endTime;
+
+            document.getElementById('fpsCounter').innerText = `FPS: ${fps.toFixed(1)} | AVG FPS: ${avgFps ? avgFps.toFixed(1) : '...'} | CURRENT FRAME: ${frameCount + 1}/200`;
+
+            frameCount++;
+            scaleFactor *= 1.005;
+
+            if (frameCount >= 200) {
+                avgFps = fpsSum / 200;
+                frameCount = 0;
+                scaleFactor = 0.5;
+                fpsSum = 0;
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        render();
+    </script>
+</body>
+
+</html>

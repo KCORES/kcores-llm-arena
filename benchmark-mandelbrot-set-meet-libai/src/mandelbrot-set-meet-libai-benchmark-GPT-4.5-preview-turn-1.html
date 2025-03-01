@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Set Animation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fpsCounter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 5px 10px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #000;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fpsCounter">FPS: 0 | AVG FPS: 0 | CURRENT FRAME: 0/200</div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const chars = [...new Set(poem)];
+        const colors = ['#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'].reverse();
+
+        const maxIter = colors.length;
+        const fontSize = 8;
+        ctx.font = `${fontSize}px monospace`;
+
+        let scale = 0.5;
+        let frameCount = 0;
+        let fps, avgFps, lastTime = performance.now(), fpsSum = 0;
+
+        function mandelbrot(x, y) {
+            let real = x, imag = y, iter = 0;
+            while (real * real + imag * imag <= 4 && iter < maxIter) {
+                [real, imag] = [real * real - imag * imag + x, 2 * real * imag + y];
+                iter++;
+            }
+            return iter;
+        }
+
+        function draw() {
+            const startTime = performance.now();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const aspectRatio = canvas.width / canvas.height;
+            const w = 3.5 / scale;
+            const h = w / aspectRatio;
+            const xOffset = -0.75, yOffset = 0;
+
+            for (let y = 0; y < canvas.height; y += fontSize) {
+                for (let x = 0; x < canvas.width; x += fontSize) {
+                    const mx = xOffset + (x - canvas.width / 2) / canvas.width * w;
+                    const my = yOffset + (y - canvas.height / 2) / canvas.height * h;
+                    const iter = mandelbrot(mx, my);
+
+                    if (iter < maxIter && iter > 2) {
+                        ctx.fillStyle = colors[iter - 1];
+                        const char = chars[(iter - 1) % chars.length];
+                        ctx.fillText(char, x, y);
+                    }
+                }
+            }
+
+            const endTime = performance.now();
+            fps = 1000 / (endTime - lastTime);
+            fpsSum += fps;
+            lastTime = endTime;
+
+            document.getElementById('fpsCounter').innerText = `FPS: ${fps.toFixed(1)} | AVG FPS: ${avgFps ? avgFps.toFixed(1) : '...'} | CURRENT FRAME: ${frameCount + 1}/200`;
+
+            scale *= 1.005;
+            frameCount++;
+
+            if (frameCount >= 200) {
+                avgFps = fpsSum / 200;
+                fpsSum = 0;
+                frameCount = 0;
+                scale = 0.5;
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        window.onresize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            ctx.font = `${fontSize}px monospace`;
+        };
+
+        draw();
+    </script>
+</body>
+
+</html>
