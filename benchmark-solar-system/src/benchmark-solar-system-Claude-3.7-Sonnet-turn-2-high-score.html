@@ -47,8 +47,8 @@
                 const updatedPlanets = planets.map(planet => {
                     // Calculate new position based on orbital period
                     const angle = (2 * Math.PI * currentDay) / planet.orbitalPeriod;
-                    const x = planet.orbitRadius * Math.cos(angle);
-                    const y = planet.orbitRadius * Math.sin(angle);
+                    const x = planet.distance * Math.cos(angle);
+                    const y = planet.distance * Math.sin(angle);
                     
                     return {
                         ...planet,
@@ -78,22 +78,26 @@
         const avgFpsElement = document.getElementById('avgFps');
         const earthDayElement = document.getElementById('earthDay');
 
-        // FPS tracking
-        let frameCount = 0;
-        let lastTime = performance.now();
-        let fpsHistory = [];
-
-        // Time and animation variables
+        // Animation variables
+        let animationId;
+        let lastTimestamp = 0;
+        let deltaTime = 0;
         let currentDay = 0;
         const daysPerSecond = 10; // 1 second real time = 10 Earth days
 
-        // Planet data
+        // FPS tracking
+        let frameCount = 0;
+        let totalFps = 0;
+        let currentFps = 0;
+        let lastFpsUpdate = 0;
+
+        // Solar system data
         const planets = [
             {
                 name: "Sun",
                 radius: 50,
-                orbitRadius: 0,
-                orbitalPeriod: 0,
+                distance: 0,
+                orbitalPeriod: 1,
                 colors: ["#f2831f", "#f15d22", "#d94125", "#a41d22"],
                 x: 0,
                 y: 0
@@ -101,7 +105,7 @@
             {
                 name: "Mercury",
                 radius: 5,
-                orbitRadius: 80,
+                distance: 100,
                 orbitalPeriod: 88, // 88 Earth days
                 colors: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"],
                 x: 0,
@@ -110,7 +114,7 @@
             {
                 name: "Venus",
                 radius: 8,
-                orbitRadius: 120,
+                distance: 150,
                 orbitalPeriod: 225, // 225 Earth days
                 colors: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"],
                 x: 0,
@@ -119,7 +123,7 @@
             {
                 name: "Earth",
                 radius: 9,
-                orbitRadius: 170,
+                distance: 200,
                 orbitalPeriod: 365, // 365 Earth days
                 colors: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"],
                 x: 0,
@@ -128,7 +132,7 @@
             {
                 name: "Mars",
                 radius: 7,
-                orbitRadius: 220,
+                distance: 250,
                 orbitalPeriod: 687, // 687 Earth days
                 colors: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"],
                 x: 0,
@@ -137,7 +141,7 @@
             {
                 name: "Jupiter",
                 radius: 30,
-                orbitRadius: 300,
+                distance: 350,
                 orbitalPeriod: 4333, // 4333 Earth days (11.86 years)
                 colors: ["#282411", "#c08137", "#bfb09c", "#a6705b"],
                 x: 0,
@@ -146,7 +150,7 @@
             {
                 name: "Saturn",
                 radius: 25,
-                orbitRadius: 380,
+                distance: 450,
                 orbitalPeriod: 10759, // 10759 Earth days (29.46 years)
                 colors: ["#f3cf89", "#dab778", "#736b59", "#c1a480"],
                 x: 0,
@@ -155,7 +159,7 @@
             {
                 name: "Uranus",
                 radius: 18,
-                orbitRadius: 450,
+                distance: 550,
                 orbitalPeriod: 30687, // 30687 Earth days (84.01 years)
                 colors: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"],
                 x: 0,
@@ -164,7 +168,7 @@
             {
                 name: "Neptune",
                 radius: 17,
-                orbitRadius: 520,
+                distance: 650,
                 orbitalPeriod: 60190, // 60190 Earth days (164.8 years)
                 colors: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"],
                 x: 0,
@@ -173,7 +177,7 @@
             {
                 name: "Pluto",
                 radius: 4,
-                orbitRadius: 580,
+                distance: 750,
                 orbitalPeriod: 90560, // 90560 Earth days (248 years)
                 colors: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"],
                 x: 0,
@@ -203,9 +207,9 @@
             offscreenCtx.lineWidth = 1;
 
             planets.forEach(planet => {
-                if (planet.orbitRadius > 0) {
+                if (planet.distance > 0) {
                     offscreenCtx.beginPath();
-                    offscreenCtx.arc(centerX, centerY, planet.orbitRadius, 0, Math.PI * 2);
+                    offscreenCtx.arc(centerX, centerY, planet.distance, 0, Math.PI * 2);
                     offscreenCtx.stroke();
                 }
             });
@@ -220,7 +224,7 @@
                 for (let py = -radius; py < radius; py++) {
                     // Check if the pixel is within the circle
                     if (px * px + py * py <= radius * radius) {
-                        // Determine which color to use based on position
+                        // Choose color based on position
                         const colorIndex = (Math.abs(px) % 2 + Math.abs(py) % 2) % 4;
                         ctx.fillStyle = colors[colorIndex];
                         ctx.fillRect(x + px, y + py, 1, 1);
@@ -239,29 +243,25 @@
 
         // Main animation loop
         function animate(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+
+            deltaTime = (timestamp - lastTimestamp) / 1000; // Convert to seconds
+            lastTimestamp = timestamp;
+
             // Calculate FPS
+            currentFps = 1 / deltaTime;
             frameCount++;
-            const elapsed = timestamp - lastTime;
+            totalFps += currentFps;
 
-            if (elapsed >= 1000) {
-                const fps = Math.round((frameCount * 1000) / elapsed);
-                fpsElement.textContent = fps;
-
-                fpsHistory.push(fps);
-                if (fpsHistory.length > 60) {
-                    fpsHistory.shift();
-                }
-
-                const avgFps = Math.round(fpsHistory.reduce((sum, fps) => sum + fps, 0) / fpsHistory.length);
-                avgFpsElement.textContent = avgFps;
-
-                frameCount = 0;
-                lastTime = timestamp;
+            // Update FPS display every 0.5 seconds
+            if (timestamp - lastFpsUpdate > 500) {
+                fpsElement.textContent = Math.round(currentFps);
+                avgFpsElement.textContent = Math.round(totalFps / frameCount);
+                lastFpsUpdate = timestamp;
             }
 
             // Update current day
-            const dayIncrement = daysPerSecond / 60; // Assuming 60 FPS
-            currentDay += dayIncrement;
+            currentDay += deltaTime * daysPerSecond;
             earthDayElement.textContent = Math.floor(currentDay);
 
             // Calculate planet positions using Web Worker
@@ -270,14 +270,14 @@
             // Clear canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw static elements from offscreen canvas
+            // Draw static orbits from offscreen canvas
             ctx.drawImage(offscreenCanvas, 0, 0);
 
             // Center of the solar system
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
 
-            // Draw planets
+            // Draw planets (will be updated when worker responds)
             planets.forEach(planet => {
                 const x = centerX + planet.x;
                 const y = centerY + planet.y;
@@ -286,10 +286,10 @@
                 drawLabel(ctx, planet, x, y);
             });
 
-            requestAnimationFrame(animate);
+            animationId = requestAnimationFrame(animate);
         }
 
-        // Handle worker messages
+        // Handle worker response
         worker.onmessage = function (e) {
             const { planets: updatedPlanets } = e.data;
 
@@ -300,10 +300,17 @@
             });
         };
 
-        // Initialize
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-        requestAnimationFrame(animate);
+        // Initialize and start animation
+        function init() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Start animation
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Start the solar system
+        init();
     </script>
 </body>
 
