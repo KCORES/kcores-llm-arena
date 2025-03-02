@@ -2,15 +2,13 @@ import tkinter as tk
 import math
 import numpy as np
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
 
 # Constants
+HEPTAGON_SIDES = 7
 HEPTAGON_RADIUS = 300
 BALL_RADIUS = 20
-GRAVITY = 0.1
-FRICTION = 0.99
-SPIN_SPEED = 360 / 5  # degrees per second
-COLORS = [
+BALL_COLORS = [
     "#f8b862",
     "#f6ad49",
     "#f39800",
@@ -32,111 +30,208 @@ COLORS = [
     "#db8449",
     "#d66a35",
 ]
+GRAVITY = 0.1
+FRICTION = 0.99
+SPIN_SPEED = 360 / (5 * 60)  # Degrees per frame (60 FPS)
 
 
 @dataclass
 class Ball:
-    id: int
     x: float
     y: float
     vx: float
     vy: float
     angle: float
     spin: float
+    number: int
+    color: str
 
 
-def rotate_point(x, y, angle):
+@dataclass
+class Heptagon:
+    radius: float
+    angle: float
+
+
+def rotate_point(x: float, y: float, angle: float) -> Tuple[float, float]:
+    """Rotate a point around the origin by a given angle."""
     rad = math.radians(angle)
-    return x * math.cos(rad) - y * math.sin(rad), x * math.sin(rad) + y * math.cos(rad)
+    cos_a, sin_a = math.cos(rad), math.sin(rad)
+    return x * cos_a - y * sin_a, x * sin_a + y * cos_a
 
 
-def distance(x1, y1, x2, y2):
-    return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+def get_heptagon_points(heptagon: Heptagon) -> List[Tuple[float, float]]:
+    """Get the vertices of the heptagon."""
+    points = []
+    for i in range(HEPTAGON_SIDES):
+        angle = 360 / HEPTAGON_SIDES * i + heptagon.angle
+        x = heptagon.radius * math.cos(math.radians(angle))
+        y = heptagon.radius * math.sin(math.radians(angle))
+        points.append((x, y))
+    return points
 
 
-def collide_balls(ball1, ball2):
-    dist = distance(ball1.x, ball1.y, ball2.x, ball2.y)
-    if dist < 2 * BALL_RADIUS:
-        dx = ball2.x - ball1.x
-        dy = ball2.y - ball1.y
-        angle = math.atan2(dy, dx)
-        speed1 = math.sqrt(ball1.vx**2 + ball1.vy**2)
-        speed2 = math.sqrt(ball2.vx**2 + ball2.vy**2)
-        ball1.vx = speed2 * math.cos(angle)
-        ball1.vy = speed2 * math.sin(angle)
-        ball2.vx = speed1 * math.cos(angle + math.pi)
-        ball2.vy = speed1 * math.sin(angle + math.pi)
+def check_collision(ball1: Ball, ball2: Ball) -> bool:
+    """Check if two balls are colliding."""
+    dx = ball1.x - ball2.x
+    dy = ball1.y - ball2.y
+    distance = math.hypot(dx, dy)
+    return distance <= 2 * BALL_RADIUS
 
 
-class BouncingBallsApp:
-    def __init__(self, root):
-        self.root = root
-        self.canvas = tk.Canvas(root, width=800, height=800)
-        self.canvas.pack()
-        self.balls = [Ball(i, 400, 400, 0, 0, 0, 0) for i in range(20)]
-        self.angle = 0
-        self.last_time = 0
-        self.root.after(0, self.update)
+def resolve_collision(ball1: Ball, ball2: Ball):
+    """Resolve the collision between two balls."""
+    dx = ball1.x - ball2.x
+    dy = ball1.y - ball2.y
+    distance = math.hypot(dx, dy)
+    if distance == 0:
+        return
 
-    def draw_heptagon(self):
-        points = []
-        for i in range(7):
-            x = 400 + HEPTAGON_RADIUS * math.cos(math.radians(self.angle + i * 360 / 7))
-            y = 400 + HEPTAGON_RADIUS * math.sin(math.radians(self.angle + i * 360 / 7))
-            points.extend([x, y])
-        self.canvas.create_polygon(points, outline="black", fill="")
+    # Normalize the collision vector
+    nx, ny = dx / distance, dy / distance
 
-    def draw_balls(self):
-        for ball in self.balls:
-            x, y = rotate_point(ball.x - 400, ball.y - 400, -self.angle)
-            x += 400
-            y += 400
-            self.canvas.create_oval(
-                x - BALL_RADIUS,
-                y - BALL_RADIUS,
-                x + BALL_RADIUS,
-                y + BALL_RADIUS,
-                fill=COLORS[ball.id],
+    # Relative velocity
+    rvx = ball1.vx - ball2.vx
+    rvy = ball1.vy - ball2.vy
+
+    # Velocity along the normal
+    vel_along_normal = rvx * nx + rvy * ny
+
+    # Do not resolve if balls are moving apart
+    if vel_along_normal > 0:
+        return
+
+    # Perfectly elastic collision
+    e = 1.0
+    j = -(1 + e) * vel_along_normal
+    j /= 1 / 1 + 1 / 1  # Assuming equal mass
+
+    # Apply impulse
+    ball1.vx += j * nx
+    ball1.vy += j * ny
+    ball2.vx -= j * nx
+    ball2.vy -= j * ny
+
+
+def update_balls(balls: List[Ball], heptagon: Heptagon):
+    """Update the positions and velocities of the balls."""
+    for ball in balls:
+        # Apply gravity
+        ball.vy += GRAVITY
+
+        # Update position
+        ball.x += ball.vx
+        ball.y += ball.vy
+
+        # Apply friction
+        ball.vx *= FRICTION
+        ball.vy *= FRICTION
+
+        # Update spin
+        ball.angle += ball.spin
+        ball.spin *= FRICTION
+
+        # Check collision with heptagon walls
+        points = get_heptagon_points(heptagon)
+        for i in range(HEPTAGON_SIDES):
+            x1, y1 = points[i]
+            x2, y2 = points[(i + 1) % HEPTAGON_SIDES]
+
+            # Vector from ball to wall segment
+            dx = x2 - x1
+            dy = y2 - y1
+            segment_length = math.hypot(dx, dy)
+            nx, ny = -dy / segment_length, dx / segment_length  # Normal vector
+
+            # Distance from ball to wall
+            dist = (ball.x - x1) * nx + (ball.y - y1) * ny
+
+            if abs(dist) <= BALL_RADIUS:
+                # Reflect velocity
+                dot = ball.vx * nx + ball.vy * ny
+                ball.vx -= 2 * dot * nx
+                ball.vy -= 2 * dot * ny
+
+                # Move ball outside the wall
+                ball.x += (BALL_RADIUS - dist) * nx
+                ball.y += (BALL_RADIUS - dist) * ny
+
+        # Check collisions between balls
+        for other in balls:
+            if other != ball and check_collision(ball, other):
+                resolve_collision(ball, other)
+
+
+def draw_heptagon(canvas: tk.Canvas, heptagon: Heptagon):
+    """Draw the heptagon on the canvas."""
+    points = get_heptagon_points(heptagon)
+    canvas.create_polygon(
+        *[coord for point in points for coord in point],
+        outline="black",
+        fill="",
+        width=2
+    )
+
+
+def draw_balls(canvas: tk.Canvas, balls: List[Ball]):
+    """Draw the balls on the canvas."""
+    for ball in balls:
+        x1, y1 = ball.x - BALL_RADIUS, ball.y - BALL_RADIUS
+        x2, y2 = ball.x + BALL_RADIUS, ball.y + BALL_RADIUS
+        canvas.create_oval(x1, y1, x2, y2, fill=ball.color, outline="black")
+        canvas.create_text(ball.x, ball.y, text=str(ball.number), fill="white")
+
+
+def main():
+    root = tk.Tk()
+    root.title("Bouncing Balls in a Spinning Heptagon")
+    canvas = tk.Canvas(root, width=800, height=800)
+    canvas.pack()
+
+    # Initialize heptagon
+    heptagon = Heptagon(radius=HEPTAGON_RADIUS, angle=0)
+
+    # Initialize balls
+    balls = []
+    for i in range(20):
+        angle = np.random.uniform(0, 360)
+        speed = np.random.uniform(2, 5)
+        vx = speed * math.cos(math.radians(angle))
+        vy = speed * math.sin(math.radians(angle))
+        balls.append(
+            Ball(
+                x=0,
+                y=0,
+                vx=vx,
+                vy=vy,
+                angle=0,
+                spin=np.random.uniform(-1, 1),
+                number=i + 1,
+                color=BALL_COLORS[i],
             )
-            self.canvas.create_text(x, y, text=str(ball.id + 1))
+        )
 
-    def update(self):
-        self.canvas.delete("all")
-        current_time = self.root.after_info()[0]
-        dt = (current_time - self.last_time) / 1000
-        self.last_time = current_time
+    def update():
+        nonlocal heptagon
+        canvas.delete("all")
 
-        self.angle += SPIN_SPEED * dt
-        if self.angle >= 360:
-            self.angle -= 360
+        # Update heptagon angle
+        heptagon.angle += SPIN_SPEED
+        if heptagon.angle >= 360:
+            heptagon.angle -= 360
 
-        for ball in self.balls:
-            ball.vy += GRAVITY
-            ball.x += ball.vx
-            ball.y += ball.vy
-            ball.vx *= FRICTION
-            ball.vy *= FRICTION
-            ball.angle += ball.spin
-            ball.spin *= FRICTION
+        # Update balls
+        update_balls(balls, heptagon)
 
-            dist = distance(ball.x, ball.y, 400, 400)
-            if dist + BALL_RADIUS > HEPTAGON_RADIUS:
-                angle = math.atan2(ball.y - 400, ball.x - 400)
-                ball.x = 400 + (HEPTAGON_RADIUS - BALL_RADIUS) * math.cos(angle)
-                ball.y = 400 + (HEPTAGON_RADIUS - BALL_RADIUS) * math.sin(angle)
-                ball.vx = -ball.vx * 0.8
-                ball.vy = -ball.vy * 0.8
+        # Draw heptagon and balls
+        draw_heptagon(canvas, heptagon)
+        draw_balls(canvas, balls)
 
-        for i in range(len(self.balls)):
-            for j in range(i + 1, len(self.balls)):
-                collide_balls(self.balls[i], self.balls[j])
+        root.after(16, update)  # ~60 FPS
 
-        self.draw_heptagon()
-        self.draw_balls()
-        self.root.after(16, self.update)
+    update()
+    root.mainloop()
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = BouncingBallsApp(root)
-    root.mainloop()
+    main()
