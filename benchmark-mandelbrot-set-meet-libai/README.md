@@ -88,6 +88,7 @@ Mandelbrot Set Meet LiBai 测试
 | Claude-3.7-Sonnet-Thinking | 5 | 5 | 5 | 5 | 4 (过大, 但能看到period-3 bulb) | 5 | 5 | 5 | 5 | 5 | 3 (Period-3/4 bulb 未留空) | 5 | 5 | 5 | 5 | 5 | 18 | 95 | 
 | Claude-3.7-Sonnet | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (Period-3/4 bulb 未留空) | 5 | 5 | 5 | 0 (计算不正确) | 5 | 9 | 82 | 
 | Qwen-2.5-Max-Thinking (QwQ Preview) | 5 | 5 | 5 | 5 | 2 (过大, 只能看不完整的 Main cardioid 和 period-2 bulb) | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 0 (计算不正确) | 3 (样式不正确, overflow了, 外加无圆角) | 20 (-10, 过大, 但能看到完整的 period-2 bulb) | 90 | 
+| GPT-4.5-Preview | 5 | 5 | 5 | 5 | 4 (过小, 但能看到period-3 bulb)  | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 |  5 | 5 (-25, 最外部没有使用文本渲染) | 84 | 
 
 
 
@@ -108,7 +109,7 @@ Mandelbrot Set Meet LiBai 测试
 
 **last update at 2025-02-25**
 
-- 从目视来讲, 效果最好的是 Claude-3.7-Sonnet-Thinking 和 Qwen-2.5-Max. 其中 Claude-3.7-Sonnet-Thinking 的代码性能最高, 而 Qwen-2.5-Max 的需求还原能力最高. 
+- 从目视来讲, 效果最好的是 Claude-3.7-Sonnet-Thinking 和 GPT-4.5-Preview. 其中 Claude-3.7-Sonnet-Thinking 的代码性能最高, 而 GPT-4.5-Preview 的需求还原能力最高. 
 - 两种统计方式中, Claude-3.7-Sonnet-Thinking 表现十分稳定, 是编程首选. 
 - 代码质量上 (注意不是代码水平而是代码质量), OpenAI-o1 当之无愧是第一名, 达到了一流开源软件的代码质量.
 - Gemini 综合质量垫底, 新出的 02-05 版本甚至没有 Gemini-2.0-Flash 和 Gemini-2.0-Flash-Thinking-Experimental-01-21 表现好. 
