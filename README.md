@@ -16,14 +16,23 @@ KCORES LLM Arena - KCORES 大模型竞技场
 ## 编程能力测试
 
 
-- [Mandelbrot Set Meet LiBai](./benchmark-mandelbrot-set-meet-libai/README.md)
+- [Mandelbrot Set Meet LiBai Benchmark](./benchmark-mandelbrot-set-meet-libai/README.md)
 
 ![Mandelbrot Set Meet LiBai](./benchmark-mandelbrot-set-meet-libai/scripts/llm_benchmark_results.png)
 
 
-- [Mars Mission](./benchmark-mars-mission/README.md)
+- [Mars Mission Benchmark](./benchmark-mars-mission/README.md)
 
 ![Mars Mission](./benchmark-mars-mission/scripts/llm_benchmark_results.png)
+
+
+- [Solar System Benchmark](./benchmark-solar-system/README.md)
+
+![Solar System](./benchmark-solar-system/scripts/llm_benchmark_results.png)
+
+- [Ball Bouncing Inside Spinning Hexagon](./benchmark-ball-bouncing-inside-spinning-hexagon/README.md)
+
+  ![Ball Bouncing Inside Spinning Hexagon](./benchmark-ball-bouncing-inside-spinning-hexagon/scripts/llm_benchmark_results.png)
 
 ## License
 
