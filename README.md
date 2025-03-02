@@ -15,6 +15,28 @@ KCORES LLM Arena - KCORES 大模型竞技场
 
 ## 编程能力测试
 
+- version: **2025-03-02**
+- Winner: **👑Claude-3.7-Sonnet-Thinking**
+
+### 结论
+
+
+
+目前最好的编程大模型是什么？直接说结论，**👑Claude-3.7-Sonnet-Thinking** 当之无愧, 甚至 Claude 系列都是非常好的选择。
+
+那么除了Claude全家桶，最好的选择是什么？答案是 **DeepSeek-R1**
+
+OpenAI 系列呢？答案是 **OpenAI-o1**
+
+Gemini 系列则是 **Gemini-2.0-Pro**
+
+Grok 嘛...开心那就好
+
+![Coding Benchmark](./scripts/llm_benchmark_results_normalized.png)
+
+
+### 测试子项
+
 
 - [Mandelbrot Set Meet LiBai Benchmark](./benchmark-mandelbrot-set-meet-libai/README.md)
 

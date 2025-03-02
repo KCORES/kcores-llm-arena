@@ -1,5 +1,5 @@
 [{
-    "LLM": "Claude-3.5-sonnet",
+    "LLM": "Claude-3.5-Sonnet",
     "point_1": 0,
     "point_2": 5,
     "point_3": 5,
@@ -288,7 +288,7 @@
     "Final-Score": 43
 },
 {
-    "LLM": "Qwen-2.5-Max-Thinking (QwQ-Preview)",
+    "LLM": "Qwen-2.5-Max-Thinking-QwQ-Preview",
     "point_1": 5,
     "point_2": 5,
     "point_3": 5,
@@ -306,6 +306,23 @@
 },
 {
     "LLM": "GPT-4.5-Preview",
+    "point_1": 0,
+    "point_2": 0,
+    "point_3": 0,
+    "point_4": 0,
+    "point_5": 0,
+    "point_6": 0,
+    "point_7": 0,
+    "point_8": 0,
+    "point_9": 0,
+    "point_10": 0,
+    "point_11": 0,
+    "point_12": 0,
+    "point_13": 0,
+    "Final-Score": 0
+},
+{
+    "LLM": "GPT-4o-mini",
     "point_1": 0,
     "point_2": 0,
     "point_3": 0,

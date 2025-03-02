@@ -231,28 +231,7 @@
         "Final-Score": 77
     },
     {
-        "LLM": "claude-3-opus",
-        "point_1": 0,
-        "point_2": 0,
-        "point_3": 0,
-        "point_4": 0,
-        "point_5": 0,
-        "point_6": 0,
-        "point_7": 0,
-        "point_8": 0,
-        "point_9": 0,
-        "point_10": 0,
-        "point_11": 0,
-        "point_12": 0,
-        "point_13": 0,
-        "point_14": 0,
-        "point_15": 0,
-        "point_16": 0,
-        "point_17": 0,
-        "Final-Score": 0
-    },
-    {
-        "LLM": "claude-3.5-sonnet",
+        "LLM": "Claude-3.5-Sonnet",
         "point_1": 5,
         "point_2": 5,
         "point_3": 5,
@@ -399,7 +378,7 @@
         "Final-Score": 82
     },
     {
-        "LLM": "Qwen-2.5-Max-Thinking (QwQ Preview)",
+        "LLM": "Qwen-2.5-Max-Thinking-QwQ-Preview",
         "point_1": 5,
         "point_2": 5,
         "point_3": 5,
