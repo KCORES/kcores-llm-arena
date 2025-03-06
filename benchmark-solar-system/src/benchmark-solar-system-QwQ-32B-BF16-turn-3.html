@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 5px 10px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarCanvas"></canvas>
+    <div id="counter"></div>
+    <script>
+        const canvas = document.getElementById('solarCanvas');
+        const ctx = canvas.getContext('2d');
+        const counterEl = document.getElementById('counter');
+        let lastTime = performance.now();
+        let fps = 0;
+        let avgFps = 0;
+        let earthDay = 0;
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+
+        const offscreenCanvas = document.createElement('canvas');
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+
+        const sunRadius = 50;
+        const planets = [
+            { name: 'Mercury', colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], radius: 8, orbitRadius: 120, periodDays: 88, angle: 0 },
+            { name: 'Venus', colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], radius: 10, orbitRadius: 200, periodDays: 225, angle: 0 },
+            { name: 'Earth', colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], radius: 12, orbitRadius: 280, periodDays: 365, angle: 0 },
+            { name: 'Mars', colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], radius: 10, orbitRadius: 360, periodDays: 687, angle: 0 },
+            { name: 'Jupiter', colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'], radius: 40, orbitRadius: 440, periodDays: 4332, angle: 0 },
+            { name: 'Saturn', colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], radius: 35, orbitRadius: 520, periodDays: 10772, angle: 0 },
+            { name: 'Uranus', colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], radius: 30, orbitRadius: 600, periodDays: 30774, angle: 0 },
+            { name: 'Neptune', colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], radius: 28, orbitRadius: 680, periodDays: 60390, angle: 0 },
+            { name: 'Pluto', colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], radius: 20, orbitRadius: 760, periodDays: 90672, angle: 0 }
+        ];
+
+        planets.forEach(p => {
+            p.rotationSpeed = (2 * Math.PI) / (p.periodDays / 10);
+        });
+
+        const workerScript = `
+            let planetsState = [];
+            onmessage = function(e) {
+                if(e.data.type === "init"){
+                    planetsState = e.data.map(p => ({rotationSpeed:p.rotationSpeed, angle:p.angle}));
+                } else if(e.data.type === "update"){
+                    const deltaT = e.data.deltaTime;
+                    planetsState.forEach(ps => {
+                        ps.angle += ps.rotationSpeed * deltaT;
+                    });
+                    const angles = planetsState.map(ps => ps.angle);
+                    postMessage(angles);
+                }
+            }
+        `;
+        const blob = new Blob([workerScript], { type: 'text/javascript' });
+        const workerUrl = URL.createObjectURL(blob);
+        const worker = new Worker(workerUrl);
+
+        worker.postMessage({
+            type: "init",
+            planets: planets.map(p => ({ rotationSpeed: p.rotationSpeed, angle: p.angle }))
+        });
+
+        function initOffscreen() {
+            offscreenCanvas.width = canvas.width;
+            offscreenCanvas.height = canvas.height;
+            offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+            offscreenCtx.globalAlpha = 0.2;
+            offscreenCtx.strokeStyle = '#ffffff';
+            planets.forEach(p => {
+                offscreenCtx.beginPath();
+                offscreenCtx.arc(canvas.width / 2, canvas.height / 2, p.orbitRadius, 0, Math.PI * 2);
+                offscreenCtx.stroke();
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(offscreenCanvas, 0, 0);
+
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, sunRadius, 0, Math.PI * 2);
+            const sunColors = ['#f2831f', '#f15d22', '#d94125', '#a41d22'];
+            const gradient = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, sunRadius);
+            gradient.addColorStop(0, sunColors[0]);
+            gradient.addColorStop(0.33, sunColors[1]);
+            gradient.addColorStop(0.66, sunColors[2]);
+            gradient.addColorStop(1, sunColors[3]);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            planets.forEach(p => {
+                const x = canvas.width / 2 + p.orbitRadius * Math.cos(p.angle);
+                const y = canvas.height / 2 + p.orbitRadius * Math.sin(p.angle);
+                drawPlanet(x, y, p.radius, p.colors);
+                drawLabel(x, y, p, p.name);
+            });
+
+            counterEl.textContent = `FPS: ${fps.toFixed(1)} | AVG: ${avgFps} | Earth Day: ${earthDay.toFixed(1)}`;
+        }
+
+        function drawPlanet(x, y, radius, colors) {
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+            gradient.addColorStop(0, colors[0]);
+            gradient.addColorStop(0.33, colors[1]);
+            gradient.addColorStop(0.66, colors[2]);
+            gradient.addColorStop(1, colors[3]);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+
+        function drawLabel(x, y, p, text) {
+            const dx = x - canvas.width / 2;
+            const dy = y - canvas.height / 2;
+            const dirAngle = Math.atan2(dy, dx);
+            const offset = p.radius + 15;
+
+            const labelX = x + Math.cos(dirAngle) * offset;
+            const labelY = y + Math.sin(dirAngle) * offset;
+
+            ctx.font = '12px sans-serif';
+            ctx.fillStyle = 'black';
+
+            ctx.save();
+            ctx.beginPath();
+            const textWidth = ctx.measureText(text).width + 10;
+            ctx.rect(labelX - textWidth / 2, labelY - 8, textWidth, 16);
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.fill();
+            ctx.restore();
+
+            ctx.fillText(text, labelX, labelY + 4);
+        }
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initOffscreen();
+        });
+        resizeCanvas();
+
+        async function animate(timestamp) {
+            const deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            frameCount++;
+            if (timestamp - lastFpsTime > 1000) {
+                avgFps = frameCount;
+                frameCount = 0;
+                lastFpsTime = timestamp;
+            }
+            fps = 1000 / deltaTime;
+
+            earthDay += deltaTime * 10;
+
+            const anglesPromise = new Promise(resolve => {
+                worker.onmessage = resolve;
+            });
+            worker.postMessage({
+                type: "update", deltaTime});
+            
+            const angles = await anglesPromise;
+                planets.forEach((p, i) => p.angle = angles[i]);
+
+                draw();
+            requestAnimationFrame(animate);
+            }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

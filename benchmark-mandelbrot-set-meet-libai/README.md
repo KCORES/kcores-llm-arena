@@ -46,7 +46,7 @@ Mandelbrot Set Meet LiBai 测试
 | 1 | 使用 canvas 绘制动画 | 使用canvas绘制动画得5分, 否则得0分 |
 | 2 | 全屏展示动画 | 全屏展示动画得5分, 否则得0分 |
 | 3 | 所有代码放在同一个HTML文件里面 | 所有代码放在同一个HTML文件里面得5分, 否则得0分 |
-| 4 | Mandelbrot Set 图形美观度(不涉及大小问题) | 满分5分，长宽比例相等得1分,  Main cardioid 展示清晰得 1分,  能看到 period-2 bulb 得1分，能看到 period-3 bulb 得1分，能看到 period-4 bulb 得1分 |
+| 4 | Mandelbrot Set 图形正确与美观度(不涉及大小问题) | 满分5分，长宽比例相等得1分,  Main cardioid 展示清晰得 1分,  能看到 period-2 bulb 得1分，能看到 period-3 bulb 得1分，能看到 period-4 bulb 得1分, 图形不正确得0分 |
 | 5 | Mandelbrot Set 的主要图形大小 | Mandelbrot Set 的主要图形初始大小约为屏幕的50%得5分 (能完整看到 period-4 buld 就不扣分), 过大但能看到 period-3 bulb得4分，过大但只能看完整到 Main cardioid 和 period-2 bulb得3分，过大但只能看不完整的 Main cardioid 和 period-2 bulb得2分，只能看到部分 Main cardioid 得1分，其它不得分，过小同理 |
 | 6 | Mandelbrot Set 的主要图形每渲染一次每帧放大 0.5% | Mandelbrot Set 的主要图形每渲染一次每帧放大 0.5%得5分, 不满足0.5%但是是放大得3分， 否则得0分 |
 | 7 | 总计渲染200次 | 总计渲染200次得5分, 否则得0分 |
@@ -89,6 +89,7 @@ Mandelbrot Set Meet LiBai 测试
 | Claude-3.7-Sonnet | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 3 (Period-3/4 bulb 未留空) | 5 | 5 | 5 | 0 (计算不正确) | 5 | 9 | 82 | 
 | Qwen-2.5-Max-Thinking (QwQ Preview) | 5 | 5 | 5 | 5 | 2 (过大, 只能看不完整的 Main cardioid 和 period-2 bulb) | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 0 (计算不正确) | 3 (样式不正确, overflow了, 外加无圆角) | 20 (-10, 过大, 但能看到完整的 period-2 bulb) | 90 | 
 | GPT-4.5-Preview | 5 | 5 | 5 | 5 | 4 (过小, 但能看到period-3 bulb)  | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 |  5 | 5 (-25, 最外部没有使用文本渲染) | 84 | 
+| Qwen-QwQ-32B-BF16 | 5 | 5 | 5 | 0 (图形不正确, Main cardioid 和 period-2 bulb 交界看不到) | 5 |  0 (要求放大实际写成了缩小) | 0 (无限渲染) | 0 (不循环) | 5 | 5 | 5 | 0 (画面中心不在交界处) | 5 | 5 | 0 (指示器计算不正确) |  3 (样式没有圆角) |5 | 53 | 
 
 
 

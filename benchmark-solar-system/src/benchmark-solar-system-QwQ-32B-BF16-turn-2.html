@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solar System</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+<canvas id="solarCanvas"></canvas>
+<script>
+    // Constants and setup
+    const canvas = document.getElementById('solarCanvas');
+    const ctx = canvas.getContext('2d');
+    const offscreenCanvas = document.createElement('canvas');
+    const offscreenCtx = offscreenCanvas.getContext('2d');
+    let lastTime = performance.now();
+    let fpsCount = 0;
+    let lastFpsTime = performance.now();
+    let averageFPS = 0;
+    let earthDay = 0;
+    let centerX = 0;
+    let centerY = 0;
+
+    // Sun and Planets data
+    const sun = {
+        colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'],
+        radius: 20,
+    };
+
+    const planets = [
+        // Mercury
+        {
+            name: 'Mercury',
+            colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'],
+            radius: 5,
+            orbitalRadius: 50,
+            angularSpeed: (2 * Math.PI * 10) / 88,
+            rotationAngle: 0,
+        },
+        // Venus
+        {
+            name: 'Venus',
+            colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'],
+            radius: 8,
+            orbitalRadius: 100,
+            angularSpeed: (2 * Math.PI * 10) / 225,
+            rotationAngle: 0,
+        },
+        // Earth
+        {
+            name: 'Earth',
+            colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'],
+            radius: 10,
+            orbitalRadius: 150,
+            angularSpeed: (2 * Math.PI * 10) / 365,
+            rotationAngle: 0,
+        },
+        // Mars
+        {
+            name: 'Mars',
+            colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'],
+            radius: 8,
+            orbitalRadius: 200,
+            angularSpeed: (2 * Math.PI * 10) / 687,
+            rotationAngle: 0,
+        },
+        // Jupiter
+        {
+            name: 'Jupiter',
+            colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'],
+            radius: 15,
+            orbitalRadius: 250,
+            angularSpeed: (2 * Math.PI * 10) / (12 * 365),
+            rotationAngle: 0,
+        },
+        // Saturn
+        {
+            name: 'Saturn',
+            colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'],
+            radius: 14,
+            orbitalRadius: 300,
+            angularSpeed: (2 * Math.PI * 10) / (29.5 * 365),
+            rotationAngle: 0,
+        },
+        // Uranus
+        {
+            name: 'Uranus',
+            colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'],
+            radius: 10,
+            orbitalRadius: 350,
+            angularSpeed: (2 * Math.PI * 10) / (84 * 365),
+            rotationAngle: 0,
+        },
+        // Neptune
+        {
+            name: 'Neptune',
+            colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'],
+            radius: 12,
+            orbitalRadius: 400,
+            angularSpeed: (2 * Math.PI * 10) / (165 * 365),
+            rotationAngle: 0,
+        },
+        // Pluto
+        {
+            name: 'Pluto',
+            colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'],
+            radius: 5,
+            orbitalRadius: 450,
+            angularSpeed: (2 * Math.PI * 10) / (248 * 365),
+            rotationAngle: 0,
+        },
+    ];
+
+    // Web Worker Setup
+    const workerScript = `onmessage = function(e) {
+        let planets;
+        if (e.data.type === 'init') {
+            planets = e.data.planets.map(p => ({...p}));
+            postMessage({type: 'initialized'});
+        } else if (e.data.type === 'update') {
+            const delta = e.data.delta;
+            planets.forEach(p => {
+                p.rotationAngle += p.angularSpeed * delta;
+            });
+            postMessage({type: 'update', planets: planets});
+        }
+    };`;
+    const blob = new Blob([workerScript], {type: 'text/javascript'});
+    const workerUrl = URL.createObjectURL(blob);
+    const worker = new Worker(workerUrl);
+
+    // Functions
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        offscreenCanvas.width = canvas.width;
+        offscreenCanvas.height = canvas.height;
+        centerX = canvas.width / 2;
+        centerY = canvas.height / 2;
+        drawOrbits();
+    }
+
+    function drawOrbits() {
+        offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+        offscreenCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+        offscreenCtx.lineWidth = 1;
+        planets.forEach(planet => {
+            offscreenCtx.beginPath();
+            offscreenCtx.arc(centerX, centerY, planet.orbitalRadius, 0, Math.PI * 2);
+            offscreenCtx.stroke();
+        });
+    }
+
+    function drawPlanet(ctx, x, y, radius, colors) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.arc(x, y, radius, 0, Math.PI / 2);
+        ctx.fillStyle = colors[0];
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, Math.PI / 2, Math.PI);
+        ctx.fillStyle = colors[1];
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, Math.PI, Math.PI * 1.5);
+        ctx.fillStyle = colors[2];
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, Math.PI * 1.5, Math.PI * 2);
+        ctx.fillStyle = colors[3];
+        ctx.fill();
+    }
+
+    function drawLabels(ctx, planet, x, y) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const distance = Math.hypot(dx, dy);
+        const labelOffset = planet.radius + 20;
+        const labelX = x + (dx / distance) * labelOffset;
+        const labelY = y + (dy / distance) * labelOffset;
+        ctx.fillStyle = 'black';
+        ctx.fillText(`[${planet.name}]`, labelX, labelY);
+    }
+
+    function drawCounter() {
+        ctx.font = '14px monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillRect(10, 10, 250, 30);
+        ctx.fillStyle = 'black';
+        ctx.fillText(`FPS: ${fpsCount.toFixed(1)} | AVG: ${averageFPS.toFixed(1)} | Earth Day: ${earthDay.toFixed(0)}`, 15, 30);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(offscreenCanvas, 0, 0);
+        // Draw Sun
+        drawPlanet(ctx, centerX, centerY, sun.radius, sun.colors);
+        // Draw Planets
+        planets.forEach(planet => {
+            const angle = planet.rotationAngle;
+            const x = centerX + planet.orbitalRadius * Math.cos(angle);
+            const y = centerY + planet.orbitalRadius * Math.sin(angle);
+            drawPlanet(ctx, x, y, planet.radius, planet.colors);
+            drawLabels(ctx, planet, x, y);
+        });
+        drawCounter();
+    }
+
+    // Animation loop with Web Worker
+    function animate() {
+        const now = performance.now();
+        const deltaTime = (now - lastTime) / 1000;
+        lastTime = now;
+        earthDay += deltaTime * 10; // Time compression: 1 sec = 10 Earth days
+
+        // FPS Counter
+        fpsCount++;
+        if (now - lastFpsTime > 1000) {
+            averageFPS = fpsCount;
+            fpsCount = 0;
+            lastFpsTime = now;
+        }
+
+        worker.postMessage({type: 'update', delta: deltaTime});
+        worker.onmessage = function(e) {
+            if (e.data.type === 'update') {
+                planets.forEach((planet, index) => {
+                    planet.rotationAngle = e.data.planets[index].rotationAngle;
+                });
+                draw();
+                requestAnimationFrame(animate);
+            }
+        };
+    }
+
+    // Initialize
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    worker.postMessage({type: 'init', planets: planets});
+    worker.addEventListener('message', function(e) {
+        if (e.data.type === 'initialized') {
+            requestAnimationFrame(animate);
+        }
+    });
+</script>
+</body>
+</html>

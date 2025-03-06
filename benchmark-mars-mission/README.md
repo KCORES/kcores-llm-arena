@@ -65,6 +65,7 @@ Generate code for an animated 3d plot of a launch from earth landing on mars and
 | Qwen-2.5-Max-Thinking (QwQ-Preview) |  5 | 5 | 5 | 5 |  0 (轨道错误) | 0 (轨道错误) | 5 | 5 | 0 (偏差大于50%)| 0 (无倾角) | 5 | 3 (无太阳) |  5 | 43 | 
 | GPT-4.5-Preview |  0 | 0 | 0  | 0|  0  | 0 | 0 | 0 | 0 | 0  | 0 | 0 |  0 | 0 | 
 | GPT-4o-mini |  0 | 0 | 0  | 0|  0  | 0 | 0 | 0 | 0 | 0  | 0 | 0 |  0 | 0 | 
+| Qwen-QwQ-32B-BF16 |  5  | 5 | 5 | 5  | 0 (轨道错误)  | 0 (轨道错误)  | 5 | 3 (偏差小于50%) | 0 (偏差大于50%) | 0 (无倾角) | 5 | 5 | 5| 43 |
 
 ## 可视化结果
 

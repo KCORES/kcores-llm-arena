@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const mainCanvas = document.getElementById('canvas');
+        const mainCtx = mainCanvas.getContext('2d');
+        const offscreenCanvas = document.createElement('canvas');
+        const offCtx = offscreenCanvas.getContext('2d');
+
+        // 行星数据
+        const planets = [
+            {
+                name: 'Sun',
+                colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'],
+                radius: 50,
+                distance: 0,
+                speed: 0
+            },
+            {
+                name: 'Mercury',
+                colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'],
+                radius: 6,
+                distance: 100,
+                speed: 360 / (87.97 / 10)
+            },
+            {
+                name: 'Venus',
+                colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'],
+                radius: 10,
+                distance: 150,
+                speed: 360 / (224.7 / 10)
+            },
+            {
+                name: 'Earth',
+                colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'],
+                radius: 12,
+                distance: 200,
+                speed: 360 / (365 / 10)
+            },
+            {
+                name: 'Mars',
+                colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'],
+                radius: 8,
+                distance: 250,
+                speed: 360 / (687 / 10)
+            },
+            {
+                name: 'Jupiter',
+                colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'],
+                radius: 25,
+                distance: 300,
+                speed: 360 / (4333 / 10)
+            },
+            {
+                name: 'Saturn',
+                colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'],
+                radius: 24,
+                distance: 350,
+                speed: 360 / (10759 / 10)
+            },
+            {
+                name: 'Uranus',
+                colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'],
+                radius: 16,
+                distance: 400,
+                speed: 360 / (30687 / 10)
+            },
+            {
+                name: 'Neptune',
+                colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'],
+                radius: 14,
+                distance: 450,
+                speed: 360 / (60190 / 10)
+            },
+            {
+                name: 'Pluto',
+                colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'],
+                radius: 4,
+                distance: 500,
+                speed: 360 / (90560 / 10)
+            }
+        ];
+
+        // Web Worker脚本
+        const workerCode = `
+        let planetsData = [];
+        let totalEarthDays = 0;
+
+        self.onmessage = function(e) {
+            const action = e.data.type;
+            if (action === 'init') {
+                planetsData = e.data.planets.map(p => ({...p, currentAngle: p.initialAngle}));
+                totalEarthDays = 0;
+            } else if (action === 'update') {
+                const deltaTime = e.data.deltaTime;
+                planetsData.forEach(p => {
+                    p.currentAngle = (p.currentAngle + p.speed * deltaTime) % 360;
+                });
+                totalEarthDays += deltaTime * 10;
+                self.postMessage({angles: planetsData.map(p => p.currentAngle), totalEarthDays});
+            }
+        };
+        `;
+        const blob = new Blob([workerCode], { type: 'text/javascript' });
+        const workerUrl = URL.createObjectURL(blob);
+        const worker = new Worker(workerUrl);
+
+        // 初始化Web Worker
+        worker.postMessage({
+            type: 'init',
+            planets: planets.map(p => ({
+                name: p.name,
+                radius: p.radius,
+                distance: p.distance,
+                speed: p.speed,
+                initialAngle: 0
+            }))
+        });
+
+        // 初始化窗口大小
+        function resize() {
+            mainCanvas.width = window.innerWidth;
+            mainCanvas.height = window.innerHeight;
+            offscreenCanvas.width = mainCanvas.width;
+            offscreenCanvas.height = mainCanvas.height;
+            drawOrbits();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 绘制轨道
+        function drawOrbits() {
+            const centerX = mainCanvas.width / 2;
+            const centerY = mainCanvas.height / 2;
+            offCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+            offCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+            offCtx.lineWidth = 1;
+            planets.slice(1).forEach(planet => {
+                offCtx.beginPath();
+                offCtx.arc(centerX, centerY, planet.distance, 0, Math.PI * 2);
+                offCtx.stroke();
+            });
+        }
+
+        // 绘制行星
+        function drawPlanet(x, y, radius, colors) {
+            mainCtx.beginPath();
+            mainCtx.arc(x, y, radius, 0, Math.PI * 2);
+            const gradient = mainCtx.createRadialGradient(x, y, 0, x, y, radius);
+            colors.forEach((color, i) => {
+                gradient.addColorStop(i / (colors.length - 1), color);
+            });
+            mainCtx.fillStyle = gradient;
+            mainCtx.fill();
+        }
+
+        // 绘制标签
+        function drawLabels(currentAngles) {
+            const centerX = mainCanvas.width / 2;
+            const centerY = mainCanvas.height / 2;
+            mainCtx.fillStyle = '#000';
+            mainCtx.font = '12px Arial';
+            planets.slice(1).forEach((planet, idx) => {
+                const angle = currentAngles[idx + 1];
+                const rad = angle * Math.PI / 180;
+                const x = centerX + Math.cos(rad) * planet.distance;
+                const y = centerY + Math.sin(rad) * planet.distance;
+                const dirX = centerX - x;
+                const dirY = centerY - y;
+                const length = Math.hypot(dirX, dirY);
+                const unitX = dirX / length;
+                const unitY = dirY / length;
+                const labelX = x + unitX * (planet.radius * 3);
+                const labelY = y + unitY * (planet.radius * 3);
+                mainCtx.fillText(`[${planet.name}]`, labelX, labelY);
+            });
+        }
+
+        // 绘制计数器
+        function drawCounters(fps, avgFps, earthDays) {
+            const text = `FPS: ${fps} | AVG: ${avgFps.toFixed(1)} | Earth Day: ${earthDays.toFixed(0)}`;
+            const metrics = mainCtx.measureText(text);
+            const padding = 5;
+            const width = metrics.width + padding * 2;
+            const height = 20 + padding * 2;
+            mainCtx.fillStyle = 'rgba(255,255,255,0.2)';
+            mainCtx.fillRect(10, 10, width, height);
+            mainCtx.fillStyle = '#000';
+            mainCtx.fillText(text, 10 + padding, 10 + 15);
+        }
+
+        // 动画循环
+        let lastTime = 0;
+        let frames = 0;
+        let lastFrameCountTime = performance.now();
+        let fps = 0;
+        let avgFps = 0;
+        let currentAngles = [];
+        let totalEarthDays = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const now = performance.now();
+            const deltaTime = (now - lastTime) / 1000;
+            lastTime = now;
+
+            // 更新FPS
+            frames++;
+            if (now - lastFrameCountTime >= 1000) {
+                fps = frames;
+                avgFps = avgFps * 0.9 + fps * 0.1;
+                frames = 0;
+                lastFrameCountTime = now;
+            }
+
+            // 更新行星位置
+            worker.postMessage({ type: 'update', deltaTime });
+        }
+
+        // 绘制回调
+        worker.onmessage = function (e) {
+            currentAngles = e.data.angles;
+            totalEarthDays = e.data.totalEarthDays;
+            mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+            mainCtx.drawImage(offscreenCanvas, 0, 0);
+
+            // 绘制太阳
+            drawPlanet(mainCanvas.width / 2, mainCanvas.height / 2, planets[0].radius, planets[0].colors);
+
+            // 绘制其他行星
+            planets.slice(1).forEach((planet, idx) => {
+                const angle = currentAngles[idx + 1];
+                const rad = angle * Math.PI / 180;
+                const x = mainCanvas.width / 2 + Math.cos(rad) * planet.distance;
+                const y = mainCanvas.height / 2 + Math.sin(rad) * planet.distance;
+                drawPlanet(x, y, planet.radius, planet.colors);
+            });
+
+            // 绘制标签和计数器
+            drawLabels(currentAngles);
+            drawCounters(fps, avgFps, totalEarthDays);
+        };
+
+        animate();
+    </script>
+</body>
+
+</html>

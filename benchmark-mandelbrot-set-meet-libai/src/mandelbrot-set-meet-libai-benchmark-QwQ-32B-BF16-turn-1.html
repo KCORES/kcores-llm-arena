@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Mandelbrot ASCII Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let frameCount = 0;
+        const totalFrames = 200;
+        let currentSize = 0.5; // 初始复平面宽度
+        const centerX = 0.25; // 曼德博集合中心
+        const centerY = 0;
+        let fps = 0;
+        let averageFps = 0;
+        let lastTime = 0;
+        let startTime = 0;
+        const palette = ['#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'];
+        const maxIter = 50; // 迭代次数
+        const poem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+        let uniqueChars = [];
+
+        // 处理《静夜思》字符，去重并保留顺序
+        function processPoem() {
+            const chars = poem.replace(/[\　-\〿，。]/g, '').split('');
+            const seen = new Set();
+            uniqueChars = [];
+            chars.forEach(c => {
+                if (!seen.has(c)) {
+                    seen.add(c);
+                    uniqueChars.push(c);
+                }
+            });
+        }
+        processPoem();
+
+        // 适配窗口大小
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function render() {
+            const now = performance.now();
+            let dt = now - lastTime;
+            if (lastTime === 0) dt = 16; // 首帧设置合理时间
+            lastTime = now;
+            fps = 1000 / dt;
+
+            if (frameCount === 0) {
+                startTime = now;
+            }
+
+            const width = canvas.width;
+            const height = canvas.height;
+            const cx = width / 2;
+            const cy = height / 2;
+            const blockWidth = 8;
+            const widthBlocks = Math.floor(width / blockWidth);
+            const heightBlocks = Math.floor(height / blockWidth);
+            const blockData = new Array(heightBlocks);
+
+            // 初始化二维数组存储块数据
+            for (let h = 0; h < heightBlocks; h++) {
+                blockData[h] = new Array(widthBlocks);
+            }
+
+            // 计算每个块的曼德博数据
+            for (let yBlock = 0; yBlock < heightBlocks; yBlock++) {
+                const yCenter = yBlock * blockWidth + blockWidth / 2;
+                for (let xBlock = 0; xBlock < widthBlocks; xBlock++) {
+                    const xCenter = xBlock * blockWidth + blockWidth / 2;
+
+                    // 将屏幕坐标转换为复平面坐标
+                    const real = centerX + (xCenter - cx) * (currentSize / width);
+                    const imag = centerY - (yCenter - cy) * (currentSize / height);
+
+                    let a = 0, b = 0;
+                    let iter = 0;
+                    let inSet = false;
+
+                    // 曼德博集合迭代计算
+                    while (a * a + b * b <= 4 && iter < maxIter) {
+                        const aa = a * a - b * b + real;
+                        const bb = 2 * a * b + imag;
+                        a = aa;
+                        b = bb;
+                        iter++;
+                    }
+                    inSet = iter === maxIter;
+
+                    if (inSet) {
+                        blockData[yBlock][xBlock] = null;
+                        continue;
+                    }
+
+                    // 颜色索引计算
+                    const colorIndex = Math.floor(((maxIter - iter) / maxIter) * (palette.length - 1));
+                    // 字符索引计算
+                    const charIndex = (xBlock + yBlock) % uniqueChars.length;
+                    const char = uniqueChars[charIndex];
+                    blockData[yBlock][xBlock] = {
+                        color: palette[colorIndex],
+                        char: char
+                    };
+                }
+            }
+
+            // 清除画布并绘制
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = '8px monospace';
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+
+            // 绘制字符
+            for (let yBlock = 0; yBlock < heightBlocks; yBlock++) {
+                const y = yBlock * blockWidth;
+                for (let xBlock = 0; xBlock < widthBlocks; xBlock++) {
+                    const x = xBlock * blockWidth;
+                    const data = blockData[yBlock][xBlock];
+                    if (data) {
+                        ctx.fillStyle = data.color;
+                        ctx.fillText(data.char, x, y);
+                    }
+                }
+            }
+
+            // 绘制FPS等信息
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            ctx.fillRect(5, 5, 250, 40);
+            ctx.fillStyle = 'black';
+            ctx.font = '12px monospace';
+            ctx.fillText(`FPS: ${fps.toFixed(1)} | AVG: ${averageFps.toFixed(1)} | Frame: ${frameCount + 1}/${totalFrames}`, 10, 25);
+
+            // 更新缩放和帧计数
+            currentSize *= 1.005;
+            if (frameCount >= totalFrames) {
+                const elapsed = (now - startTime) / 1000;
+                averageFps = totalFrames / elapsed;
+                frameCount = 0;
+                currentSize = 0.5;
+            } else {
+                frameCount++;
+            }
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+
+</html>

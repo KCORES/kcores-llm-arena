@@ -438,6 +438,27 @@
         "point_17": 5,
         "point_18": 5,
         "Final-Score": 81
+    },
+    {
+        "LLM": "Qwen-QwQ-32B-BF16",
+        "point_1": 5,
+        "point_2": 5,
+        "point_3": 5,
+        "point_4": 5,
+        "point_5": 5,
+        "point_6": 5,
+        "point_7": 5,
+        "point_8": 5,
+        "point_9": 5,
+        "point_10": 5,
+        "point_11": 5,
+        "point_12": 5,
+        "point_13": 4,
+        "point_14": 5,
+        "point_15": 5,
+        "point_16": 5,
+        "point_17": 3,
+        "point_18": 5,
+        "Final-Score": 87
     }
 ]
-

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #fpsDisplay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            padding: 5px 10px;
+            color: black;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fpsDisplay"></div>
+    <script>
+        const poem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。"
+            .replace(/，|。/g, ''); // 去除标点
+        const uniqueChars = [];
+        const seen = new Set();
+        for (const c of poem) {
+            if (!seen.has(c)) {
+                seen.add(c);
+                uniqueChars.push(c);
+            }
+        }
+        const chars = uniqueChars.join('');
+
+        const colors = [
+        "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde",
+        "#8491c3", "#867ba9", "#68699b", "#706caa", "#5654a2", "#4d4398",
+        "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c",
+        "#17184b", "#0f2350"
+        ];
+        colors.reverse(); // 确保最深颜色优先显示在边缘
+
+        const maxIterations = colors.length;
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let frameNum = 0;
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let totalElapsedTime = 0;
+        const fpsDisplay = document.getElementById('fpsDisplay');
+        let mandelConfig;
+
+        function computeIterations(c_real, c_imag) {
+            let z_real = 0, z_imag = 0;
+            let iterations = 0;
+            while (z_real * z_real + z_imag * z_imag < 4 && iterations < maxIterations) {
+                const z_real_sq = z_real * z_real;
+                const z_imag_sq = z_imag * z_imag;
+                const temp_real = z_real_sq - z_imag_sq + c_real;
+                const temp_imag = 2 * z_real * z_imag + c_imag;
+                z_real = temp_real;
+                z_imag = temp_imag;
+                iterations++;
+            }
+            return iterations;
+        }
+
+        function resizeCanvas() {
+            canvas.width = Math.floor(window.innerWidth / 8) * 8;
+            canvas.height = Math.floor(window.innerHeight / 8) * 8;
+            mandelConfig = {
+                centerX: 0.25,
+                centerY: 0,
+                initialWidth: 0.5,
+                initialHeight: 0.5 * (canvas.height / canvas.width),
+                currentWidth: 0.5,
+                currentHeight: 0.5 * (canvas.height / canvas.width),
+            };
+        }
+
+        function draw() {
+            const frame = frameNum;
+            mandelConfig.currentWidth = mandelConfig.initialWidth * Math.pow(0.995, frame);
+            mandelConfig.currentHeight = mandelConfig.initialHeight * Math.pow(0.995, frame);
+
+            const left = mandelConfig.centerX - mandelConfig.currentWidth / 2;
+            const top = mandelConfig.centerY - mandelConfig.currentHeight / 2;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const blockWidthCount = canvas.width / 8;
+            const blockHeightCount = canvas.height / 8;
+
+            for (let yBlock = 0; yBlock < blockHeightCount; yBlock++) {
+                for (let xBlock = 0; xBlock < blockWidthCount; xBlock++) {
+                    const x = xBlock * 8 + 4;
+                    const y = yBlock * 8 + 4;
+
+                    const c_real = left + (x / canvas.width) * mandelConfig.currentWidth;
+                    const c_imag = top + (y / canvas.height) * mandelConfig.currentHeight;
+
+                    const iterations = computeIterations(c_real, c_imag);
+
+                    if (iterations < maxIterations) {
+                        const color = colors[iterations];
+                        const charIndex = (xBlock + yBlock * blockWidthCount) % chars.length;
+                        const char = chars[charIndex];
+
+                        ctx.fillStyle = color;
+                        ctx.font = "8px monospace";
+                        ctx.textBaseline = "top";
+                        ctx.textAlign = "left";
+                        ctx.fillText(char, xBlock * 8, yBlock * 8);
+                    }
+                }
+            }
+        }
+
+        function animate(timestamp) {
+            if (frameNum >= 200) {
+                frameNum = 0;
+                totalElapsedTime = 0;
+                frameCount = 0;
+                resizeCanvas();
+            }
+
+            draw();
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+            totalElapsedTime += deltaTime;
+            frameCount++;
+            const currentFPS = 1000 / deltaTime;
+            const avgFPS = (frameCount) ? (1000 * frameCount) / totalElapsedTime : 0;
+            fpsDisplay.textContent = `FPS: ${currentFPS.toFixed(1)} | AVG: ${avgFPS.toFixed(1)} | CURRENT: ${frameNum}/200`;
+
+            frameNum++;
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

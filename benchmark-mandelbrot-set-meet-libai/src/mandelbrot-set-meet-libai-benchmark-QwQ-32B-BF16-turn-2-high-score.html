@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Mandelbrot ASCII Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const poem = '床前明月光疑是地上霜举头望明月低头思故乡';
+        const charList = Array.from(new Set(poem.split(''))).join('').split('');
+
+        const colorStrings = ['#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'];
+        const colors = colorStrings.slice().reverse(); // 反转为深到浅
+
+        const canvas = document.getElementById('canvas');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const ctx = canvas.getContext('2d');
+
+        const maxIter = 256;
+        const centerX = 0; // 主心形中心实部
+        const centerY = 0;
+        let scale = 6 / canvas.width; // 初始缩放
+        let frameCount = 0;
+        let currentFPS = 0;
+        let avgFPS = 0;
+        let totalFrameTime = 0;
+        let lastFrameTime = 0;
+
+        function mandelIter(real, imag) {
+            let x = 0, y = 0;
+            let iter = 0;
+            while (x * x + y * y <= 4 && iter < maxIter) {
+                let tempX = x * x - y * y + real;
+                let tempY = 2 * x * y + imag;
+                x = tempX;
+                y = tempY;
+                iter++;
+            }
+            return iter;
+        }
+
+        function isMainCardioid(real, imag) {
+            return (3 * real * real + 4 * imag * imag + 2 * real - 1) <= 0;
+        }
+
+        function drawFrame() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const charIndex = 0;
+            for (let y = 0; y < canvas.height; y += 8) {
+                for (let x = 0; x < canvas.width; x += 8) {
+                    const cx = centerX + (x + 4 - canvas.width / 2) * scale;
+                    const cy = centerY + (y + 4 - canvas.height / 2) * scale;
+
+                    const iter = mandelIter(cx, cy);
+                    const isInMain = isMainCardioid(cx, cy);
+
+                    if (!isInMain && iter < maxIter) {
+                        const colorIdx = Math.min(iter, colors.length - 1);
+                        const color = colors[colorIdx];
+                        const char = charList[colorIdx % charList.length];
+
+                        ctx.fillStyle = color;
+                        ctx.font = '8px monospace';
+                        ctx.fillText(char, x, y);
+                    }
+                }
+            }
+
+            drawUI();
+        }
+
+        function drawUI() {
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            ctx.fillRect(5, 5, 200, 100);
+            ctx.fillStyle = '#000';
+            ctx.font = '12px monospace';
+            ctx.fillText(`FPS: ${Math.round(currentFPS)}`, 10, 20);
+            ctx.fillText(`AVG: ${Math.round(avgFPS)}`, 10, 40);
+            ctx.fillText(`Frame ${frameCount}/200`, 10, 60);
+        }
+
+        function update() {
+            if (frameCount >= 200) {
+                frameCount = 0;
+                scale = 6 / canvas.width;
+                totalFrameTime = 0;
+                avgFPS = 0;
+                return;
+            }
+
+            scale *= 1.005;
+            drawFrame();
+            frameCount++;
+
+            const now = performance.now();
+            const delta = now - lastFrameTime;
+            if (delta >= 1000) {
+                currentFPS = frameCount;
+                avgFPS = Math.round((totalFrameTime + delta) / frameCount);
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+            totalFrameTime += delta;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>
