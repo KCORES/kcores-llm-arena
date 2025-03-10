@@ -38,23 +38,108 @@ Grok 嘛...开心那就好
 ### 测试子项
 
 
-- [Mandelbrot Set Meet LiBai Benchmark](./benchmark-mandelbrot-set-meet-libai/README.md)
+**[Mandelbrot Set Meet LiBai Benchmark](./benchmark-mandelbrot-set-meet-libai/README.md)**
+
+#### 该项目主要测试
+
+- 性能优化
+  - 双缓冲或三缓冲
+  - 离屏渲染
+  - WebWorker 多线程
+- 需求还原
+  - 给定了20种颜色进行渲染
+  - 动画效果
+  - CSS样式
+- 字符串处理
+  - 过滤
+  - 去重
+  - 保证字符串顺序
+- 计算
+  - FPS与平均FPS计算
+- 数学
+  - Mandelbrot Set
+  - 理解 Mandelbrot Set 各个气泡
+  - 使画面中心保持在气泡交界处
+- 编程语言
+  - JavaScript
+  - HTML, CSS
+
 
 ![Mandelbrot Set Meet LiBai](./benchmark-mandelbrot-set-meet-libai/scripts/llm_benchmark_results.png)
 
 
-- [Mars Mission Benchmark](./benchmark-mars-mission/README.md)
+
+**[Mars Mission Benchmark](./benchmark-mars-mission/README.md)**
+
+#### 该项目主要测试
+
+- 需求还原
+  - 展示各个行星
+  - 动画效果展示公转
+  - 展示轨迹
+- 需求补全
+  - 补全演示中缺失的坐标系与图例
+  - 渲染太阳
+- 计算
+  - 圆周轨道与运行周期
+  - 飞船的飞行轨迹
+  - 飞船准确降落行星
+- 物理
+  - 天体运行轨道半径
+  - 天体运行周期
+  - 飞行器发射窗口与返回窗口
+- 编程语言
+  -Python
 
 ![Mars Mission](./benchmark-mars-mission/scripts/llm_benchmark_results.png)
 
 
-- [Solar System Benchmark](./benchmark-solar-system/README.md)
+**[Solar System Benchmark](./benchmark-solar-system/README.md)**
+
+#### 该项目主要测试
+
+- 需求还原
+  - 展示各个行星
+  - 动画效果展示公转
+  - 展示轨迹
+  - CSS样式
+  - 动画效果
+  - 行星名称标签
+- 计算
+  - 圆周轨道与运行周期
+  - FPS与平均FPS计算
+- 物理
+  - 天体运行轨道半径
+  - 天体运行周期
+  - 天体大小
+- 创意
+  - 行星的颜色渲染
+- 编程语言
+  - JavaScript
+  - HTML, CSS
 
 ![Solar System](./benchmark-solar-system/scripts/llm_benchmark_results.png)
 
-- [Ball Bouncing Inside Spinning Hexagon](./benchmark-ball-bouncing-inside-spinning-hexagon/README.md)
+**[Ball Bouncing Inside Spinning Heptagon](./benchmark-ball-bouncing-inside-spinning-heptagon/README.md)**
 
-  ![Ball Bouncing Inside Spinning Hexagon](./benchmark-ball-bouncing-inside-spinning-hexagon/scripts/llm_benchmark_results.png)
+#### 该项目主要测试
+
+- 需求还原
+  - 展示7边形旋转
+  - 展示20个小球的物理运动
+  - 展示小球上面的数字
+  - 小球大小一致
+- 计算
+  - 相关物理效果计算
+  - 7边形的旋转
+  - 小球不会重叠
+  - 小球不会超过7边形
+- 物理
+  - 摩擦，碰撞，重力，小球弹性模拟
+- 编程语言
+  -Python
+
+  ![Ball Bouncing Inside Spinning Heptagon](./benchmark-ball-bouncing-inside-spinning-heptagon/scripts/llm_benchmark_results.png)
 
 ## License
 

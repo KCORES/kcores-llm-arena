@@ -10,21 +10,21 @@ import psutil  # 如果系统没有安装，需要先 pip install psutil
 from pathlib import Path
 
 # 配置参数
-MODEL_DIR = "/workspace/llms/QwQ-32B-GGUF/"
+MODEL_DIR = "/workspace/llms/"
 RESULTS_DIR = "/workspace/results/"
-LLAMA_CLI_PATH = "/workspace/apps/llama.cpp/build/bin/llama-cli"
+LLAMA_CLI_PATH = "/workspace/llama.cpp/build/bin/llama-cli"
 
 # 模型列表
 MODELS = [
-    "qwq-32b-q2_k-00001-of-00004.gguf",
-    "qwq-32b-q4_k_m-00001-of-00005.gguf",
-    "qwq-32b-q5_k_m-00001-of-00006.gguf",
-    "qwq-32b-q8_0-00001-of-00009.gguf",
+    # "QwQ-32B-Q2_K_L.gguf",
+    # "QwQ-32B-Q4_K_M.gguf",
+    "QwQ-32B-Q5_K_M.gguf",
+    "QwQ-32B.Q8_0.gguf",
 ]
 
 # 基准测试列表
 BENCHMARKS = {
-    "benchmark-ball-bouncing-inside-spinning-hexagon": """Write a Python program that shows 20 balls bouncing inside a spinning heptagon:
+    "benchmark-ball-bouncing-inside-spinning-heptagon": """Write a Python program that shows 20 balls bouncing inside a spinning heptagon:
 - All balls have the same radius.
 - All balls have a number on it from 1 to 20.
 - All balls drop from the heptagon center when starting.
@@ -118,8 +118,11 @@ def run_test(model, benchmark_name, prompt, turn):
     log_file = f"{benchmark_name}-{model}-turn-{turn}.log"
     log_path = os.path.join(RESULTS_DIR, log_file)
 
-    # 构建命令 - 不使用tee，而是通过Python处理输出
-    cmd = f'{LLAMA_CLI_PATH} -m {model_path} -ngl 128 -sm layer -mg 2 -c 4096 -n 16384 -t 12 -tb 12 -b 4096 -ub 512 --temp 0.7  --mlock --numa distribute --prompt "{prompt}"'
+    # 构建新的命令，使用更新后的参数和 prompt 模板
+    formatted_prompt = (
+        f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    )
+    cmd = f'{LLAMA_CLI_PATH} --model {model_path} --threads 32 --ctx-size 16384 --n-gpu-layers 99 --seed 3407 --prio 2 --temp 0.6 --repeat-penalty 1.1 --dry-multiplier 0.5 --min-p 0.1 --top-k 40 --top-p 0.95 -no-cnv --samplers "top_k;top_p;min_p;temperature;dry;typ_p;xtc" --prompt "{formatted_prompt}"'
 
     start_time = time.time()
     print(f"开始测试: {benchmark_name} - {model} - 轮次 {turn}")

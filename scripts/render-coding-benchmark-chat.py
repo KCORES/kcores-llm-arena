@@ -15,10 +15,10 @@ plt.rcParams["font.family"] = "Sarasa Mono SC"
 
 # Define benchmark paths and their max scores
 benchmarks = {
-    "benchmark-ball-bouncing-inside-spinning-hexagon": {
-        "path": "../benchmark-ball-bouncing-inside-spinning-hexagon/scripts/benchmark-data.json",
+    "benchmark-ball-bouncing-inside-spinning-heptagon": {
+        "path": "../benchmark-ball-bouncing-inside-spinning-heptagon/scripts/benchmark-data.json",
         "max_score": 90,
-        "display_name": "ball-bouncing-inside-spinning-hexagon",
+        "display_name": "ball-bouncing-inside-spinning-heptagon",
     },
     "benchmark-mandelbrot-set-meet-libai": {
         "path": "../benchmark-mandelbrot-set-meet-libai/scripts/benchmark-data.json",
@@ -94,7 +94,7 @@ llm_names = [entry["LLM"] for entry in combined_data]
 
 # Colors for each benchmark
 colors = {
-    "benchmark-ball-bouncing-inside-spinning-hexagon": "#65318e",  # 234,85,6
+    "benchmark-ball-bouncing-inside-spinning-heptagon": "#65318e",  # 234,85,6
     "benchmark-mandelbrot-set-meet-libai": "#674196",  # 77,67,152
     "benchmark-mars-mission": "#674598",  # 245,177,170
     "benchmark-solar-system": "#7058a3",  # 170,76,143

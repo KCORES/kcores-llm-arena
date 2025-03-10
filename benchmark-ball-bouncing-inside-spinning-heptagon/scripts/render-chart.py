@@ -109,7 +109,7 @@ for i, score in enumerate(bottom):  # 使用 bottom 作为最终高度
 # Add labels and title
 ax.set_ylabel("Score")
 ax.set_title(
-    "KCORES LLM Arena - Ball Bouncing Inside Spinning Hexagon Benchmark\nby karminski-牙医\nhttps://github.com/KCORES/kcores-llm-arena"
+    "KCORES LLM Arena - Ball Bouncing Inside Spinning Heptagon Benchmark\nby karminski-牙医\nhttps://github.com/KCORES/kcores-llm-arena"
 )
 
 ax.set_ylim(0, 110)

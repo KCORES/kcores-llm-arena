@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KCORES LLM Arena - 测试项目</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.2.31/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.10.4/dist/gsap.min.js"></script>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --secondary: #10b981;
+            --accent: #8b5cf6;
+            --dark: #1f2937;
+            --light: #f9fafb;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--light);
+            color: var(--dark);
+        }
+
+        .project-card {
+            transition: all 0.3s ease;
+            border-left: 5px solid transparent;
+        }
+
+        .project-card.active {
+            border-left-color: var(--primary);
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        .category-card {
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+
+        .category-card.active {
+            border-left-color: var(--secondary);
+            background-color: rgba(16, 185, 129, 0.1);
+        }
+
+        .detail-card {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.5s ease;
+        }
+
+        .detail-card.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .category-badge {
+            background-color: var(--primary);
+        }
+
+        .language-badge.javascript {
+            background-color: #f7df1e;
+            color: black;
+        }
+
+        .language-badge.python {
+            background-color: #3776ab;
+            color: white;
+        }
+
+        .language-badge.html {
+            background-color: #e34c26;
+            color: white;
+        }
+
+        .language-badge.css {
+            background-color: #264de4;
+            color: white;
+        }
+
+        /* 背景动画 */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.05;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app" class="container mx-auto px-4 py-8">
+        <div class="bg-animation"></div>
+
+        <header class="mb-12 text-center">
+            <h1 class="text-4xl font-bold mb-2">KCORES LLM Arena</h1>
+            <h2 class="text-2xl font-semibold text-gray-700">测试项目</h2>
+            <p class="text-gray-500 mt-2">大模型编程能力测试项目详情</p>
+            <button @click="toggleAutoPlay" 
+                    class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">
+                {{ autoPlay ? '停止自动播放' : '开始自动播放' }}
+            </button>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- 第一列：主测试项目 -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h3 class="text-xl font-bold mb-4 pb-2 border-b">测试子项目</h3>
+                <div class="space-y-3">
+                    <div v-for="(project, index) in projects" :key="index"
+                        class="project-card p-3 rounded-md cursor-pointer hover:shadow-md"
+                        :class="{'active': activeProject === index}" @click="selectProject(index)">
+                        <h4 class="font-medium">{{ project.name }}</h4>
+                        <p class="text-sm text-gray-500">{{ project.shortDesc }}</p>
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            <span v-for="lang in project.languages" :key="lang"
+                                class="language-badge text-xs px-2 py-1 rounded-full" :class="lang.toLowerCase()">
+                                {{ lang }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 第二列：测试类别 -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h3 class="text-xl font-bold mb-4 pb-2 border-b">测试类别</h3>
+                <div v-if="activeProject !== null" class="space-y-3">
+                    <div v-for="(category, index) in projects[activeProject].categories" :key="index"
+                        class="category-card p-3 rounded-md cursor-pointer hover:shadow-md"
+                        :class="{'active': activeCategory === index}" @click="selectCategory(index)">
+                        <div class="flex items-center gap-2">
+                            <span class="category-badge text-xs text-white px-2 py-1 rounded-full">
+                                {{ category.type }}
+                            </span>
+                            <h4 class="font-medium">{{ category.name }}</h4>
+                        </div>
+                    </div>
+                </div>
+                <div v-else class="text-center py-12 text-gray-400">
+                    请先选择测试子项目
+                </div>
+            </div>
+
+            <!-- 第三列：测试详情 -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h3 class="text-xl font-bold mb-4 pb-2 border-b">测试详情</h3>
+                <div v-if="activeCategory !== null && activeProject !== null" class="space-y-4">
+                    <div v-for="(detail, index) in projects[activeProject].categories[activeCategory].details"
+                        :key="index" class="detail-card p-3 rounded-md shadow-sm bg-gray-50" :class="{'visible': true}">
+                        <p>{{ detail }}</p>
+                    </div>
+                </div>
+                <div v-else-if="activeProject !== null" class="text-center py-12 text-gray-400">
+                    请选择测试类别
+                </div>
+                <div v-else class="text-center py-12 text-gray-400">
+                    请先选择测试子项目
+                </div>
+            </div>
+        </div>
+
+        <!-- 项目图片预览区 -->
+        <div class="mt-8" v-if="activeProject !== null">
+            <h3 class="text-xl font-bold mb-4">项目概览</h3>
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <img :src="projects[activeProject].image" :alt="projects[activeProject].name" class="w-full rounded-md">
+                <p class="text-center text-gray-500 mt-2">{{ projects[activeProject].name }} 测试结果</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const app = Vue.createApp({
+            data() {
+                return {
+                    activeProject: null,
+                    activeCategory: null,
+                    autoPlay: false,
+                    autoPlayTimer: null,
+                    autoPlayInterval: 3000, // 3秒切换一次
+                    projects: [
+                        {
+                            name: "Mandelbrot Set Meet LiBai Benchmark",
+                            shortDesc: "曼德布洛特集合与李白诗词结合的基准测试",
+                            image: "./benchmark-mandelbrot-set-meet-libai/scripts/llm_benchmark_results.png",
+                            languages: ["JavaScript", "HTML", "CSS"],
+                            categories: [
+                                {
+                                    type: "性能",
+                                    name: "性能优化",
+                                    details: [
+                                        "双缓冲或三缓冲技术实现",
+                                        "离屏渲染提升性能",
+                                        "WebWorker 多线程计算"
+                                    ]
+                                },
+                                {
+                                    type: "需求",
+                                    name: "需求还原",
+                                    details: [
+                                        "使用给定的20种颜色进行渲染",
+                                        "实现动画效果",
+                                        "按要求实现CSS样式"
+                                    ]
+                                },
+                                {
+                                    type: "字符串",
+                                    name: "字符串处理",
+                                    details: [
+                                        "字符串过滤处理",
+                                        "字符串去重",
+                                        "保证字符串的原始顺序"
+                                    ]
+                                },
+                                {
+                                    type: "计算",
+                                    name: "性能计算",
+                                    details: [
+                                        "FPS计算实现",
+                                        "平均FPS统计"
+                                    ]
+                                },
+                                {
+                                    type: "数学",
+                                    name: "数学实现",
+                                    details: [
+                                        "Mandelbrot Set 算法实现",
+                                        "理解 Mandelbrot Set 各个气泡结构",
+                                        "使画面中心保持在气泡交界处"
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            name: "Mars Mission Benchmark",
+                            shortDesc: "火星任务模拟基准测试",
+                            image: "./benchmark-mars-mission/scripts/llm_benchmark_results.png",
+                            languages: ["Python"],
+                            categories: [
+                                {
+                                    type: "需求",
+                                    name: "需求还原",
+                                    details: [
+                                        "展示各个行星",
+                                        "动画效果展示公转",
+                                        "展示轨迹"
+                                    ]
+                                },
+                                {
+                                    type: "需求",
+                                    name: "需求补全",
+                                    details: [
+                                        "补全演示中缺失的坐标系与图例",
+                                        "渲染太阳"
+                                    ]
+                                },
+                                {
+                                    type: "计算",
+                                    name: "轨道计算",
+                                    details: [
+                                        "圆周轨道与运行周期计算",
+                                        "飞船的飞行轨迹计算",
+                                        "飞船准确降落行星模拟"
+                                    ]
+                                },
+                                {
+                                    type: "物理",
+                                    name: "天体物理",
+                                    details: [
+                                        "天体运行轨道半径",
+                                        "天体运行周期",
+                                        "飞行器发射窗口与返回窗口"
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            name: "Solar System Benchmark",
+                            shortDesc: "太阳系模拟基准测试",
+                            image: "./benchmark-solar-system/scripts/llm_benchmark_results.png",
+                            languages: ["JavaScript", "HTML", "CSS"],
+                            categories: [
+                                {
+                                    type: "需求",
+                                    name: "需求还原",
+                                    details: [
+                                        "展示各个行星",
+                                        "动画效果展示公转",
+                                        "展示轨迹",
+                                        "CSS样式实现",
+                                        "各种动画效果",
+                                        "行星名称标签"
+                                    ]
+                                },
+                                {
+                                    type: "计算",
+                                    name: "轨道计算",
+                                    details: [
+                                        "圆周轨道与运行周期",
+                                        "FPS与平均FPS计算"
+                                    ]
+                                },
+                                {
+                                    type: "物理",
+                                    name: "天体物理",
+                                    details: [
+                                        "天体运行轨道半径",
+                                        "天体运行周期",
+                                        "天体大小比例"
+                                    ]
+                                },
+                                {
+                                    type: "创意",
+                                    name: "创意设计",
+                                    details: [
+                                        "行星的颜色渲染"
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            name: "Ball Bouncing Inside Spinning Heptagon",
+                            shortDesc: "旋转七边形内弹跳小球基准测试",
+                            image: "./benchmark-ball-bouncing-inside-spinning-heptagon/scripts/llm_benchmark_results.png",
+                            languages: ["Python"],
+                            categories: [
+                                {
+                                    type: "需求",
+                                    name: "需求还原",
+                                    details: [
+                                        "展示7边形旋转",
+                                        "展示20个小球的物理运动",
+                                        "展示小球上面的数字",
+                                        "小球大小一致"
+                                    ]
+                                },
+                                {
+                                    type: "计算",
+                                    name: "物理计算",
+                                    details: [
+                                        "相关物理效果计算",
+                                        "7边形的旋转",
+                                        "小球不会重叠",
+                                        "小球不会超过7边形"
+                                    ]
+                                },
+                                {
+                                    type: "物理",
+                                    name: "物理模拟",
+                                    details: [
+                                        "摩擦模拟",
+                                        "碰撞检测",
+                                        "重力模拟",
+                                        "小球弹性模拟"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            methods: {
+                selectProject(index) {
+                    this.activeProject = index;
+                    this.activeCategory = null;
+
+                    // 触发背景动画变化
+                    this.changeBackgroundAnimation();
+                },
+                selectCategory(index) {
+                    this.activeCategory = index;
+
+                    // 动画显示详情卡片
+                    setTimeout(() => {
+                        const detailCards = document.querySelectorAll('.detail-card');
+                        detailCards.forEach((card, i) => {
+                            gsap.to(card, {
+                                opacity: 1,
+                                y: 0,
+                                duration: 0.3,
+                                delay: i * 0.1
+                            });
+                        });
+                    }, 50);
+                },
+                changeBackgroundAnimation() {
+                    const bg = document.querySelector('.bg-animation');
+
+                    // 清除现有内容
+                    bg.innerHTML = '';
+
+                    // 根据当前选中的项目生成不同的背景
+                    if (this.activeProject === 0) {
+                        // Mandelbrot 风格背景
+                        this.createFractalBackground(bg);
+                    } else if (this.activeProject === 1 || this.activeProject === 2) {
+                        // 星空风格背景
+                        this.createStarryBackground(bg);
+                    } else if (this.activeProject === 3) {
+                        // 几何风格背景
+                        this.createGeometricBackground(bg);
+                    }
+                },
+                createFractalBackground(element) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                    element.appendChild(canvas);
+
+                    // 简单的分形背景模拟
+                    const ctx = canvas.getContext('2d');
+                    for (let i = 0; i < 30; i++) {
+                        const x = Math.random() * canvas.width;
+                        const y = Math.random() * canvas.height;
+                        const size = 20 + Math.random() * 80;
+
+                        ctx.beginPath();
+                        ctx.arc(x, y, size, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(59, 130, 246, ${Math.random() * 0.2})`;
+                        ctx.fill();
+                    }
+                },
+                createStarryBackground(element) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                    element.appendChild(canvas);
+
+                    // 简单的星空背景
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    for (let i = 0; i < 200; i++) {
+                        const x = Math.random() * canvas.width;
+                        const y = Math.random() * canvas.height;
+                        const radius = Math.random() * 1.5;
+
+                        ctx.beginPath();
+                        ctx.arc(x, y, radius, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.8})`;
+                        ctx.fill();
+                    }
+                },
+                createGeometricBackground(element) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                    element.appendChild(canvas);
+
+                    // 几何图形背景
+                    const ctx = canvas.getContext('2d');
+
+                    for (let i = 0; i < 20; i++) {
+                        const x = Math.random() * canvas.width;
+                        const y = Math.random() * canvas.height;
+                        const sides = 5 + Math.floor(Math.random() * 3);
+                        const size = 30 + Math.random() * 50;
+
+                        ctx.beginPath();
+                        ctx.moveTo(x + size * Math.cos(0), y + size * Math.sin(0));
+
+                        for (let j = 1; j <= sides; j++) {
+                            const angle = j * 2 * Math.PI / sides;
+                            ctx.lineTo(x + size * Math.cos(angle), y + size * Math.sin(angle));
+                        }
+
+                        ctx.closePath();
+                        ctx.strokeStyle = `rgba(139, 92, 246, ${Math.random() * 0.3})`;
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+                },
+                toggleAutoPlay() {
+                    this.autoPlay = !this.autoPlay;
+                    
+                    if (this.autoPlay) {
+                        this.startAutoPlay();
+                    } else {
+                        this.stopAutoPlay();
+                    }
+                },
+                
+                startAutoPlay() {
+                    // 清除可能存在的计时器
+                    this.stopAutoPlay();
+                    
+                    let projectIndex = 0;
+                    let categoryIndex = 0;
+                    
+                    // 设置定时器
+                    this.autoPlayTimer = setInterval(() => {
+                        // 先选择项目
+                        this.selectProject(projectIndex);
+                        
+                        // 延迟选择类别，让项目选择的动画先完成
+                        setTimeout(() => {
+                            // 选择类别
+                            if (this.projects[projectIndex].categories.length > 0) {
+                                this.selectCategory(categoryIndex);
+                            }
+                            
+                            // 更新下一次要显示的项目和类别索引
+                            categoryIndex++;
+                            
+                            // 如果类别已全部显示，切换到下一个项目的第一个类别
+                            if (categoryIndex >= this.projects[projectIndex].categories.length) {
+                                categoryIndex = 0;
+                                projectIndex = (projectIndex + 1) % this.projects.length;
+                            }
+                        }, 80);
+                    }, this.autoPlayInterval);
+                },
+                
+                stopAutoPlay() {
+                    if (this.autoPlayTimer) {
+                        clearInterval(this.autoPlayTimer);
+                        this.autoPlayTimer = null;
+                    }
+                }
+            },
+            beforeUnmount() {
+                // 组件销毁前清除定时器
+                this.stopAutoPlay();
+            },
+            mounted() {
+                // 初始化时选择第一个项目
+                this.selectProject(0);
+            }
+        });
+
+        app.mount('#app');
+    </script>
+</body>
+
+</html>

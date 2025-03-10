@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模型测试卡 - Mandelbrot Set Meet Libai</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #ffffff;
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .card-container {
+            width: 90%;
+            max-width: 1600px;
+            background-color: #fff;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin: 20px auto;
+        }
+
+        .card-header {
+            background-color: #192f60;
+            color: white;
+            padding: 20px 30px;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .card-content {
+            display: flex;
+            flex-direction: row;
+            min-height: 80vh;
+        }
+
+        .prompt-section {
+            flex: 1;
+            padding: 25px;
+            border-right: 1px solid #eee;
+            overflow-y: auto;
+            max-height: calc(100vh - 150px);
+        }
+
+        .result-section {
+            flex: 1;
+            padding: 25px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f9f9f9;
+            min-height: 400px;
+        }
+
+        h2 {
+            margin-bottom: 15px;
+            color: #192f60;
+            font-size: 20px;
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: hidden;
+            white-space: pre-wrap;
+            font-family: 'consolas', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .placeholder-text {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+        }
+
+        @media (max-width: 1080px) {
+            .card-content {
+                flex-direction: column;
+            }
+
+            .prompt-section {
+                border-right: none;
+                border-bottom: 1px solid #eee;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card-container">
+        <div class="card-header">
+            Mandelbrot Set Meet Libai 测试
+        </div>
+        <div class="card-content">
+            <div class="prompt-section">
+                <h2>测试 Prompt</h2>
+                <pre>请完成编程比赛，比赛内容如下：
+
+请使用html, css, javascript, 创建一个动画，要求如下：
+
+- 使用 canvas 绘制动画
+- 请使用全屏展示动画
+- 所有代码需要放在同一个HTML文件里面
+- 动画内容是 ASCII 风格的 Mandelbrot Set, Mandelbrot Set 的主要图形初始大小为屏幕的50%，每渲染一次每帧放大 0.5%，总计渲染200次，200次后重置动画循环渲染
+- Mandelbrot set 的候选字符使用李白的诗《静夜思》
+- 需要对诗词进行去重并保留原有的字符顺序，并且不包含标点符号，可以循环使用
+- Mandelbrot Set 的 Main cardioid and period bulbs 部分留空
+- 动画的中心应使始终为 Main cardioid and period bulbs 的交界处
+- 动画字体大小8px, 字体渲染排列也是8px，无间距
+- Mandelbrot Set 字符颜色候选集为（由浅到深色）：#eaf4fc，#eaedf7，#e8ecef，#ebf6f7， #bbc8e6， #bbbcde， #8491c3， #867ba9， #68699b， #706caa， #5654a2， #4d4398， #4a488e， #274a78 ， #2a4073， #223a70， #192f60， #1c305c， #17184b， #0f2350
+- 字符从 mandelbrot set的最外围使用最深的颜色，然后依次变浅
+- 左上角有一个显示当前FPS的指示器（FPS），以及一个统计平均FPS的指示器（AVG FPS）, 以及一个当前渲染帧序号指示器（CURRENT FRAME: n/200），平均帧率在200帧渲染完毕后计算和更新，黑色字体，背景使用半透明白色圆角
+
+请仔细还原上面每一个要求，每个要求的还原程度均作为采分点  
+同时，尽量优化渲染性能，提高FPS。以平均30FPS为满分
+运行环境使用Chrome浏览器。CPU为8核心CPU，因此最大可用线程数为8</pre>
+
+    
+
+                <p style="color:red; margin-top: 15px;">* 注意, 无法运行, 运行错误退出, 运行无画面, 运行不是动画则判定为未完成 prompt, 直接得 0 分</p>
+            </div>
+            <div class="result-section">
+                <div class="placeholder-text">
+                    模型运行结果将在此处展示<br>
+                    (留空供后续手动合成)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 响应式调整
+        window.addEventListener('resize', function () {
+            const windowHeight = window.innerHeight;
+            const cardHeader = document.querySelector('.card-header');
+            const headerHeight = cardHeader.offsetHeight;
+            const promptSection = document.querySelector('.prompt-section');
+
+            if (window.innerWidth > 1080) {
+                promptSection.style.maxHeight = (windowHeight - headerHeight - 40) + 'px';
+            } else {
+                promptSection.style.maxHeight = 'none';
+            }
+        });
+
+        // 初始调整
+        window.dispatchEvent(new Event('resize'));
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模型测试卡 - Mars Mission</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #ffffff;
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .card-container {
+            width: 90%;
+            max-width: 1600px;
+            background-color: #fff;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin: 20px auto;
+        }
+
+        .card-header {
+            background-color: #f4b3c2;
+            color: white;
+            padding: 20px 30px;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .card-content {
+            display: flex;
+            flex-direction: row;
+            min-height: 80vh;
+        }
+
+        .prompt-section {
+            flex: 1;
+            padding: 25px;
+            border-right: 1px solid #eee;
+            overflow-y: auto;
+            max-height: calc(100vh - 150px);
+        }
+
+        .result-section {
+            flex: 1;
+            padding: 25px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f9f9f9;
+            min-height: 400px;
+        }
+
+        h2 {
+            margin-bottom: 15px;
+            color: #f4b3c2;
+            font-size: 20px;
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: hidden;
+            white-space: pre-wrap;
+            font-family: 'consolas', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .placeholder-text {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+        }
+
+        @media (max-width: 1080px) {
+            .card-content {
+                flex-direction: column;
+            }
+
+            .prompt-section {
+                border-right: none;
+                border-bottom: 1px solid #eee;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card-container">
+        <div class="card-header">
+            Mars Mission 测试
+        </div>
+        <div class="card-content">
+            <div class="prompt-section">
+                <h2>测试 Prompt</h2>
+                <pre>Generate code for an animated 3d plot of a launch from earth landing on mars and then back to earth at the next launch window
+</pre>
+
+    
+
+                <p style="color:red; margin-top: 15px;">* 注意, 无法运行, 运行错误退出, 运行无画面, 运行不是动画则判定为未完成 prompt, 直接得 0 分</p>
+            </div>
+            <div class="result-section">
+                <div class="placeholder-text">
+                    模型运行结果将在此处展示<br>
+                    (留空供后续手动合成)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 响应式调整
+        window.addEventListener('resize', function () {
+            const windowHeight = window.innerHeight;
+            const cardHeader = document.querySelector('.card-header');
+            const headerHeight = cardHeader.offsetHeight;
+            const promptSection = document.querySelector('.prompt-section');
+
+            if (window.innerWidth > 1080) {
+                promptSection.style.maxHeight = (windowHeight - headerHeight - 40) + 'px';
+            } else {
+                promptSection.style.maxHeight = 'none';
+            }
+        });
+
+        // 初始调整
+        window.dispatchEvent(new Event('resize'));
+    </script>
+</body>
+
+</html>

@@ -1,6 +1,6 @@
 
 
-Ball Bouncing Inside Spinning Hexagon 测试
+Ball Bouncing Inside Spinning Heptagon 测试
 ----------------------------------------------------
 
 ## Desc

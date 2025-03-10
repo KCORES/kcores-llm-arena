@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模型测试卡 - Solar System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #ffffff;
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .card-container {
+            width: 90%;
+            max-width: 1600px;
+            background-color: #fff;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin: 20px auto;
+        }
+
+        .card-header {
+            background-color: #cfecf0;
+            color: white;
+            padding: 20px 30px;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .card-content {
+            display: flex;
+            flex-direction: row;
+            min-height: 80vh;
+        }
+
+        .prompt-section {
+            flex: 1;
+            padding: 25px;
+            border-right: 1px solid #eee;
+            overflow-y: auto;
+            max-height: calc(100vh - 150px);
+        }
+
+        .result-section {
+            flex: 1;
+            padding: 25px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f9f9f9;
+            min-height: 400px;
+        }
+
+        h2 {
+            margin-bottom: 15px;
+            color: #cfecf0;
+            font-size: 20px;
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: hidden;
+            white-space: pre-wrap;
+            font-family: 'consolas', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .placeholder-text {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+        }
+
+        @media (max-width: 1080px) {
+            .card-content {
+                flex-direction: column;
+            }
+
+            .prompt-section {
+                border-right: none;
+                border-bottom: 1px solid #eee;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card-container">
+        <div class="card-header">
+            Solar System 测试
+        </div>
+        <div class="card-content">
+            <div class="prompt-section">
+                <h2>测试 Prompt</h2>
+                <pre>创建一个符合以下规格的HTML5 Canvas太阳系动画：
+
+0. **要求**
+- 所有代码应在一个HTML文件中
+- 使用canvas绘制动画
+- 全屏显示动画
+
+1. **天体要求**
+- 包括：太阳，9颗行星
+- 由于太阳过大, 因此所有星球只要展示相对大小即可, 比如太阳最大, 木星次之
+- 行星按照距离太阳的远近排列, 从内到外依次是水星, 金星, 地球, 火星, 木星, 土星, 天王星, 海王星, 冥王星
+- 注意各个星球的轨道间距要大于星球本身的直径，以免造成视觉上的重叠
+
+2. **视觉设计**
+- 每个星球使用4种颜色做像素填充，仅填充一次
+  • 太阳：#f2831f, #f15d22, #d94125, #a41d22
+  • 水星：#5a5856, #bfbdbc, #8c8a89, #f4f6f8
+  • 金星：#868a8d, #d9b392, #f3dbc3, #414141
+  • 地球：#1f386f, #0b1725, #386f61, #dac0a5
+  • 火星：#dabd9e, #8c5d4b, #f27c5f, #c36d5c
+  • 木星：#282411, #c08137, #bfb09c, #a6705b
+  • 土星：#f3cf89, #dab778, #736b59, #c1a480
+  • 天王星：#3f575a, #688a8c, #95bbbe, #cfecf0
+  • 海王星：#647ba5, #7595bf, #4e5d73, #789ebf
+  • 冥王星：#d8cbbb, #f4ebdc, #402a16, #a79f97
+- 轨道线：半透明白色圆圈
+- 标签：
+  • 始终面向摄像机的星球文字标签
+  • 格式：[星球名称]
+
+3. **运动模拟**
+- 时间压缩：1秒真实时间=10个地球日, 地球绕太阳一周为365个地球日
+- 行星公转轨道使用圆形轨道即可
+- 层次结构：
+  • 所有行星围绕太阳运行
+
+4. **技术实现**
+- 使用requestAnimationFrame实现平滑动画
+
+5. **性能优化**
+- 离屏canvas用于静态元素（轨道线）
+- 使用Web Workers进行位置计算
+
+6. **计数器**
+- 在左上角显示当前FPS指示器（FPS）和平均FPS指示器（AVG FPS），以及当前地球日计数 (Earth Day)
+- 使用黑色文字和半透明白色圆角背景
+
+
+注意，不要省略星球视觉设计的代码，我需要你实现全部的代码。
+</pre>
+
+    
+
+                <p style="color:red; margin-top: 15px;">* 注意, 无法运行, 运行错误退出, 运行无画面, 运行不是动画则判定为未完成 prompt, 直接得 0 分</p>
+            </div>
+            <div class="result-section">
+                <div class="placeholder-text">
+                    模型运行结果将在此处展示<br>
+                    (留空供后续手动合成)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 响应式调整
+        window.addEventListener('resize', function () {
+            const windowHeight = window.innerHeight;
+            const cardHeader = document.querySelector('.card-header');
+            const headerHeight = cardHeader.offsetHeight;
+            const promptSection = document.querySelector('.prompt-section');
+
+            if (window.innerWidth > 1080) {
+                promptSection.style.maxHeight = (windowHeight - headerHeight - 40) + 'px';
+            } else {
+                promptSection.style.maxHeight = 'none';
+            }
+        });
+
+        // 初始调整
+        window.dispatchEvent(new Event('resize'));
+    </script>
+</body>
+
+</html>
