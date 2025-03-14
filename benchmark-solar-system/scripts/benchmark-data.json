@@ -462,7 +462,7 @@
         "Final-Score": 87
     },
     {
-        "LLM": "Gemma-3-27B-BF16",
+        "LLM": "Gemma-3-27B-it-BF16",
         "point_1": 5,
         "point_2": 3,
         "point_3": 5,
