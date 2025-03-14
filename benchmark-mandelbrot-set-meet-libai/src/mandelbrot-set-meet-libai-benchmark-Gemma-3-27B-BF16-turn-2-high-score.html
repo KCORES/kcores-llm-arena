@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        #fps-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 5px;
+            border-radius: 5px;
+            color: black;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="fps-info">
+        FPS: <span id="fps">0</span><br>
+        AVG FPS: <span id="avg-fps">0</span><br>
+        CURRENT FRAME: <span id="current-frame">0/200</span>
+    </div>
+
+    <canvas id="mandelbrotCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const fpsSpan = document.getElementById('fps');
+        const avgFpsSpan = document.getElementById('avg-fps');
+        const currentFrameSpan = document.getElementById('current-frame');
+
+        // Set canvas to fullscreen
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const ctx = canvas.getContext('2d');
+
+        // Li Bai's poem "Quiet Night Thought"
+        const poem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+
+        // Remove punctuation and duplicates, preserving order
+        const characters = [...new Set(poem.replace(/[\p{P}]/gu, '').split('').filter(char => char !== ' '))].join('');
+
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3',
+            '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78',
+            '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+
+        let zoom = 1.0;
+        let centerX = 0;
+        let centerY = 0;
+        let frame = 0;
+        let frames = [];
+        let avgFps = 0;
+
+        function mandelbrot(x, y) {
+            let z = 0;
+            let n = 0;
+            while (Math.abs(z) < 2 && n < 255) {
+                z = z * z + new complex(x, y);
+                n++;
+            }
+            return n;
+        }
+
+        class complex {
+            constructor(real, imag) {
+                this.real = real;
+                this.imag = imag;
+            }
+        }
+
+        function drawMandelbrot() {
+            ctx.font = '8px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const width = canvas.width;
+            const height = canvas.height;
+
+            for (let x = 0; x < width; x += 8) {
+                for (let y = 0; y < height; y += 8) {
+                    const cReal = (x / width - 0.5) * 4 / zoom + centerX;
+                    const cImag = (y / height - 0.5) * 4 / zoom + centerY;
+
+                    const n = mandelbrot(cReal, cImag);
+
+                    // Main cardioid and period bulbs are left empty
+                    if (Math.abs(cReal * cReal + cImag * cImag) < 0.5 || n > 200) {
+                        ctx.fillStyle = 'black';
+                    } else {
+                        const colorIndex = Math.floor(n * colors.length / 255);
+                        ctx.fillStyle = colors[colors.length - 1 - colorIndex]; // Darkest color at the edge
+                    }
+
+                    ctx.fillText(characters[n % characters.length], x + 4, y + 4);
+                }
+            }
+        }
+
+        function animate() {
+            const startTime = performance.now();
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawMandelbrot();
+
+            const endTime = performance.now();
+            const fps = 1000 / (endTime - startTime);
+
+            fpsSpan.textContent = fps.toFixed(1);
+            frames.push(fps);
+            if (frames.length > 200) {
+                frames.shift();
+                avgFps = frames.reduce((a, b) => a + b, 0) / frames.length;
+                avgFpsSpan.textContent = avgFps.toFixed(1);
+            }
+
+            currentFrameSpan.textContent = `${frame + 1}/200`;
+
+            frame++;
+
+            if (frame < 200) {
+                zoom *= 1.005;
+                requestAnimationFrame(animate);
+            } else {
+                frame = 0;
+                zoom = 1.0;
+                centerX = 0;
+                centerY = 0;
+                currentFrameSpan.textContent = `0/200`;
+                requestAnimationFrame(animate);
+            }
+        }
+
+        // Initial center point for the cardioid and bulbs
+        centerX = -0.7;
+        centerY = 0;
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+
+</html>

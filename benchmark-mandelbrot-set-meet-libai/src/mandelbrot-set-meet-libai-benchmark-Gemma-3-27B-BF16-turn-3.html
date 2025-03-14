@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        #fps-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 5px;
+            border-radius: 5px;
+            color: black;
+            font-family: sans-serif;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="fps-indicator">
+        FPS: <span id="fps">0</span><br>
+        AVG FPS: <span id="avg-fps">0</span><br>
+        CURRENT FRAME: <span id="current-frame">0/200</span>
+    </div>
+    <canvas id="mandelbrotCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const fpsIndicator = document.getElementById('fps');
+        const avgFpsIndicator = document.getElementById('avg-fps');
+        const currentFrameIndicator = document.getElementById('current-frame');
+
+        let width, height;
+        let xOffset = 0;
+        let yOffset = 0;
+        let zoom = 1;
+        const zoomIncrement = 0.005;
+        const maxIterations = 50;
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3',
+            '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78',
+            '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+        let currentFrame = 0;
+        let frameTimes = [];
+        let avgFps = 0;
+        const poem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+        const uniqueChars = [...new Set(poem.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, ''))];
+        let charIndex = 0;
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        function mandelbrot(x, y) {
+            let z = 0;
+            let n = 0;
+            while (Math.abs(z) <= 2 && n < maxIterations) {
+                z = z * z + new Complex(x, y);
+                n++;
+            }
+            return n;
+        }
+
+
+        class Complex {
+            constructor(real, imag) {
+                this.real = real;
+                this.imag = imag;
+            }
+
+            // Needed for comparing absolute value above.
+            abs() {
+                return Math.sqrt(this.real * this.real + this.imag * this.imag);
+            }
+        }
+
+
+        function drawMandelbrot() {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, width, height);
+
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    const cX = (x / width - 0.5) * 3 + xOffset;
+                    const cY = (y / height - 0.5) * 3 + yOffset;
+
+                    const iterations = mandelbrot(cX, cY);
+
+                    let colorIndex = Math.min(iterations, colors.length - 1);
+                    const color = colors[colors.length - 1 - colorIndex];
+
+                    const char = uniqueChars[charIndex % uniqueChars.length];
+                    ctx.fillStyle = color;
+                    ctx.font = '8px monospace';
+                    ctx.fillText(char, x, y + 8);   // Adjust y for proper alignment
+
+                    charIndex++;
+                }
+            }
+        }
+
+        function resetAnimation() {
+            xOffset = -1.5;
+            yOffset = 0;
+            zoom = 1;
+            charIndex = 0;
+            currentFrame = 0;
+            frameTimes = [];
+            avgFps = 0;
+        }
+
+        function animate() {
+            const startTime = performance.now();
+            drawMandelbrot();
+            const endTime = performance.now();
+            const frameTime = endTime - startTime;
+
+            frameTimes.push(frameTime);
+            if (frameTimes.length > 20) {
+                frameTimes.shift();
+            }
+
+            const sum = frameTimes.reduce((a, b) => a + b, 0);
+            avgFps = 1000 / (sum / frameTimes.length);
+
+            fpsIndicator.textContent = Math.round(1000 / frameTime);
+            avgFpsIndicator.textContent = Math.round(avgFps);
+            currentFrameIndicator.textContent = `${currentFrame + 1}/200`;
+
+            currentFrame++;
+
+            if (currentFrame >= 200) {
+                resetAnimation();
+
+            }
+
+            zoom *= 1 + zoomIncrement;
+            // Center the animation
+            xOffset += zoomIncrement / 2;
+            yOffset += zoomIncrement / 2;
+
+            requestAnimationFrame(animate);
+        }
+
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        animate();
+    </script>
+</body>
+
+</html>

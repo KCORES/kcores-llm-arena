@@ -63,7 +63,8 @@ Grok 嘛...开心那就好
 - 编程语言
   - JavaScript
   - HTML, CSS
-
+- Prompt 语言
+  - 英语
 
 ![Mandelbrot Set Meet LiBai](./benchmark-mandelbrot-set-meet-libai/scripts/llm_benchmark_results.png)
 
@@ -90,6 +91,8 @@ Grok 嘛...开心那就好
   - 飞行器发射窗口与返回窗口
 - 编程语言
   -Python
+- Prompt 语言
+  - 中文
 
 ![Mars Mission](./benchmark-mars-mission/scripts/llm_benchmark_results.png)
 
@@ -117,6 +120,8 @@ Grok 嘛...开心那就好
 - 编程语言
   - JavaScript
   - HTML, CSS
+- Prompt 语言
+  - 中文
 
 ![Solar System](./benchmark-solar-system/scripts/llm_benchmark_results.png)
 
@@ -138,6 +143,8 @@ Grok 嘛...开心那就好
   - 摩擦，碰撞，重力，小球弹性模拟
 - 编程语言
   -Python
+- Prompt 语言
+  - 英语
 
   ![Ball Bouncing Inside Spinning Heptagon](./benchmark-ball-bouncing-inside-spinning-heptagon/scripts/llm_benchmark_results.png)
 

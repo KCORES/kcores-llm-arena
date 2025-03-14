@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+            color: black;
+            font-family: sans-serif;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solar-system-canvas"></canvas>
+    <div id="fps-counter"></div>
+
+    <script>
+        const canvas = document.getElementById('solar-system-canvas');
+        const fpsCounter = document.getElementById('fps-counter');
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+
+        // Planetary data
+        const planets = [
+            { name: 'Sun', radius: 60, color1: '#f2831f', color2: '#f15d22', color3: '#d94125', color4: '#a41d22', orbitRadius: 0, speed: 0 },
+            { name: 'Mercury', radius: 3, color1: '#5a5856', color2: '#bfbdbc', color3: '#8c8a89', color4: '#f4f6f8', orbitRadius: 80, speed: 0.018 },
+            { name: 'Venus', radius: 6, color1: '#868a8d', color2: '#d9b392', color3: '#f3dbc3', color4: '#414141', orbitRadius: 120, speed: 0.014 },
+            { name: 'Earth', radius: 7, color1: '#1f386f', color2: '#0b1725', color3: '#386f61', color4: '#dac0a5', orbitRadius: 180, speed: 0.01 },
+            { name: 'Mars', radius: 5, color1: '#dabd9e', color2: '#8c5d4b', color3: '#f27c5f', color4: '#c36d5c', orbitRadius: 240, speed: 0.008 },
+            { name: 'Jupiter', radius: 15, color1: '#282411', color2: '#c08137', color3: '#bfb09c', color4: '#a6705b', orbitRadius: 350, speed: 0.005 },
+            { name: 'Saturn', radius: 13, color1: '#f3cf89', color2: '#dab778', color3: '#736b59', color4: '#c1a480', orbitRadius: 480, speed: 0.003 },
+            { name: 'Uranus', radius: 10, color1: '#3f575a', color2: '#688a8c', color3: '#95bbbe', color4: '#cfecf0', orbitRadius: 600, speed: 0.002 },
+            { name: 'Neptune', radius: 9, color1: '#647ba5', color2: '#7595bf', color3: '#4e5d73', color4: '#789ebf', orbitRadius: 720, speed: 0.0015 },
+            { name: 'Pluto', radius: 2, color1: '#d8cbbb', color2: '#f4ebdc', color3: '#402a16', color4: '#a79f97', orbitRadius: 800, speed: 0.001 }
+        ];
+
+        let angles = planets.map(() => 0);
+        let earthDay = 0;
+
+        let lastTime = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let fpsCount = 0;
+        let fpsSum = 0;
+
+        // Off-screen canvas for orbits
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = width;
+        offscreenCanvas.height = height;
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+
+        // Function to draw orbits
+        function drawOrbits() {
+            offscreenCtx.clearRect(0, 0, width, height);
+            offscreenCtx.globalAlpha = 0.2;
+            offscreenCtx.beginPath();
+            for (let i = 1; i < planets.length; i++) {
+                offscreenCtx.beginPath();
+                offscreenCtx.arc(width / 2, height / 2, planets[i].orbitRadius, 0, 2 * Math.PI);
+                offscreenCtx.stroke();
+            }
+            offscreenCtx.globalAlpha = 1;
+        }
+
+        drawOrbits();
+
+        function update() {
+            const now = performance.now();
+            const deltaTime = now - lastTime;
+
+            // Frame rate calculation, averaging over 10 frames
+            fps = 1000 / deltaTime;
+            fpsSum += fps;
+            fpsCount++;
+            if (fpsCount > 10) {
+                avgFps = fpsSum / fpsCount;
+                fpsSum = 0;
+                fpsCount = 0;
+            }
+
+            // Update planet angles
+            for (let i = 1; i < planets.length; i++) {
+                angles[i] += planets[i].speed * deltaTime / 10;
+            }
+
+            earthDay += planets[3].speed * deltaTime / 10; // Earth day counter
+
+            // Rendering
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(offscreenCanvas, 0, 0); // Draw orbits from off-screen canvas
+
+            // Draw planets
+            for (let i = 0; i < planets.length; i++) {
+                const x = width / 2 + planets[i].orbitRadius * Math.cos(angles[i]);
+                const y = height / 2 + planets[i].orbitRadius * Math.sin(angles[i]);
+
+                ctx.beginPath();
+                ctx.arc(x, y, planets[i].radius, 0, 2 * Math.PI);
+
+                // Fill with multiple colors
+                const gradient = ctx.createLinearGradient(x - planets[i].radius, y - planets[i].radius, x + planets[i].radius, y + planets[i].radius);
+                gradient.addColorStop(0, planets[i].color1);
+                gradient.addColorStop(0.25, planets[i].color2);
+                gradient.addColorStop(0.5, planets[i].color3);
+                gradient.addColorStop(1, planets[i].color4);
+                ctx.fillStyle = gradient;
+
+                ctx.fill();
+                ctx.stroke();
+
+                // Draw labels
+                ctx.fillStyle = 'white';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(planets[i].name, x, y);
+            }
+
+            // Update FPS counter
+            fpsCounter.textContent = `FPS: ${Math.round(fps)}, AVG FPS: ${Math.round(avgFps)}, Earth Day: ${Math.round(earthDay)}`;
+
+            lastTime = now;
+            requestAnimationFrame(update);
+        }
+
+        // Event listener for window resize
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            offscreenCanvas.width = width;
+            offscreenCanvas.height = height;
+            drawOrbits();
+        });
+
+        update();
+    </script>
+</body>
+
+</html>

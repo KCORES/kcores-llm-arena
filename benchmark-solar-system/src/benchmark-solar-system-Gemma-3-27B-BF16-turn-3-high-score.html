@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+            color: black;
+            font-family: sans-serif;
+            font-size: 12px;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solar-system-canvas"></canvas>
+    <div id="fps-counter"></div>
+
+    <script>
+        const canvas = document.getElementById('solar-system-canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsCounter = document.getElementById('fps-counter');
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+        const solarSystem = {
+            sun: {
+                x: width / 2,
+                y: height / 2,
+                radius: 60,
+                color1: '#f2831f',
+                color2: '#f15d22',
+                color3: '#d94125',
+                color4: '#a41d22'
+            },
+            mercury: {
+                distance: 80,
+                radius: 5,
+                speed: 0.015,
+                angle: 0,
+                color1: '#5a5856',
+                color2: '#bfbdbc',
+                color3: '#8c8a89',
+                color4: '#f4f6f8'
+            },
+            venus: {
+                distance: 120,
+                radius: 8,
+                speed: 0.012,
+                angle: 0,
+                color1: '#868a8d',
+                color2: '#d9b392',
+                color3: '#f3dbc3',
+                color4: '#414141'
+            },
+            earth: {
+                distance: 180,
+                radius: 10,
+                speed: 0.01,
+                angle: 0,
+                color1: '#1f386f',
+                color2: '#0b1725',
+                color3: '#386f61',
+                color4: '#dac0a5'
+            },
+            mars: {
+                distance: 240,
+                radius: 7,
+                speed: 0.008,
+                angle: 0,
+                color1: '#dabd9e',
+                color2: '#8c5d4b',
+                color3: '#f27c5f',
+                color4: '#c36d5c'
+            },
+            jupiter: {
+                distance: 350,
+                radius: 25,
+                speed: 0.005,
+                angle: 0,
+                color1: '#282411',
+                color2: '#c08137',
+                color3: '#bfb09c',
+                color4: '#a6705b'
+            },
+            saturn: {
+                distance: 480,
+                radius: 20,
+                speed: 0.003,
+                angle: 0,
+                color1: '#f3cf89',
+                color2: '#dab778',
+                color3: '#736b59',
+                color4: '#c1a480'
+            },
+            uranus: {
+                distance: 600,
+                radius: 15,
+                speed: 0.002,
+                angle: 0,
+                color1: '#3f575a',
+                color2: '#688a8c',
+                color3: '#95bbbe',
+                color4: '#cfecf0'
+            },
+            neptune: {
+                distance: 720,
+                radius: 14,
+                speed: 0.0015,
+                angle: 0,
+                color1: '#647ba5',
+                color2: '#7595bf',
+                color3: '#4e5d73',
+                color4: '#789ebf'
+            },
+            pluto: {
+                distance: 850,
+                radius: 4,
+                speed: 0.001,
+                angle: 0,
+                color1: '#d8cbbb',
+                color2: '#f4ebdc',
+                color3: '#402a16',
+                color4: '#a79f97'
+            }
+        };
+
+        let earthDay = 0;
+        let lastTime = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let fpsCount = 0;
+
+        function drawPlanet(planet, x, y) {
+            ctx.beginPath();
+            ctx.arc(x, y, planet.radius, 0, 2 * Math.PI);
+            ctx.fillStyle = planet.color1;
+            ctx.fill();
+
+            // Pixel fill with 4 colors
+            const pixelSize = planet.radius / 4;
+            for (let i = 0; i < planet.radius; i += pixelSize) {
+                for (let j = 0; j < planet.radius; j += pixelSize) {
+                    const dist = Math.sqrt((i - planet.radius / 2) ** 2 + (j - planet.radius / 2) ** 2);
+                    if (dist <= planet.radius / 2) {
+                        let colorIndex = 0;
+                        if (dist > planet.radius / 2 * 3 / 4) colorIndex = 3;
+                        else if (dist > planet.radius / 2 * 2 / 4) colorIndex = 2;
+                        else if (dist > planet.radius / 2 * 1 / 4) colorIndex = 1;
+                        else colorIndex = 0;
+
+                        const color = planet[`color${colorIndex + 1}`];
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x - planet.radius / 2 + i, y - planet.radius / 2 + j, pixelSize, pixelSize);
+                    }
+                }
+            }
+        }
+
+        function drawOrbit(planet) {
+            ctx.beginPath();
+            ctx.arc(solarSystem.sun.x, solarSystem.sun.y, planet.distance, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        function drawLabels() {
+            ctx.fillStyle = 'white';
+            ctx.font = '14px sans-serif';
+
+            for (const planetName in solarSystem) {
+                if (planetName !== 'sun') {
+                    const planet = solarSystem[planetName];
+                    let x = solarSystem.sun.x + planet.distance * Math.cos(planet.angle);
+                    let y = solarSystem.sun.y + planet.distance * Math.sin(planet.angle);
+
+                    // Calculate label position to always face the camera
+                    const angleRad = planet.angle;
+                    const labelX = x - Math.cos(angleRad) * 15;
+                    const labelY = y - Math.sin(angleRad) * 15;
+
+                    ctx.fillText(planetName, labelX, labelY);
+                }
+            }
+        }
+
+        function update() {
+            const now = performance.now();
+            const deltaTime = now - lastTime;
+            lastTime = now;
+
+            fps = Math.round(1000 / deltaTime);
+            fpsCount++;
+            if (fpsCount >= 30) {
+                avgFps = Math.round(fpsCount / 30);
+                fpsCount = 0;
+            }
+
+            earthDay += deltaTime / (1000 * 60 * 60 * 24) * 10; // 1 second = 10 Earth days
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw orbits (offscreen canvas could be used for optimization)
+            for (const planetName in solarSystem) {
+                if (planetName !== 'sun') {
+                    drawOrbit(solarSystem[planetName]);
+                }
+            }
+
+            // Draw sun
+            drawPlanet(solarSystem.sun, solarSystem.sun.x, solarSystem.sun.y);
+
+            // Update and draw planets
+            for (const planetName in solarSystem) {
+                if (planetName !== 'sun') {
+                    const planet = solarSystem[planetName];
+                    planet.angle += planet.speed;
+
+                    let x = solarSystem.sun.x + planet.distance * Math.cos(planet.angle);
+                    let y = solarSystem.sun.y + planet.distance * Math.sin(planet.angle);
+
+                    drawPlanet(planet, x, y);
+                }
+            }
+
+            drawLabels();
+
+            // Update FPS counter
+            fpsCounter.textContent = `FPS: ${fps}, AVG FPS: ${avgFps}, Earth Day: ${earthDay.toFixed(0)}`;
+
+            requestAnimationFrame(update);
+        }
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            solarSystem.sun.x = width / 2;
+            solarSystem.sun.y = height / 2;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        update();
+    </script>
+</body>
+
+</html>

@@ -354,5 +354,22 @@
     "point_12": 5,
     "point_13": 5,
     "Final-Score": 43
+},
+{
+    "LLM": "Gemma-3-27B-BF16",
+    "point_1": 0,
+    "point_2": 0,
+    "point_3": 0,
+    "point_4": 0,
+    "point_5": 0,
+    "point_6": 0,
+    "point_7": 0,
+    "point_8": 0,
+    "point_9": 0,
+    "point_10": 0,
+    "point_11": 0,
+    "point_12": 0,
+    "point_13": 0,
+    "Final-Score": 0
 }
 ]
