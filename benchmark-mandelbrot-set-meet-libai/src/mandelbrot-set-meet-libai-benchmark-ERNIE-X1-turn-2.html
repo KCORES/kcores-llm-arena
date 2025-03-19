@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+        #canvas {
+            display: block;
+        }
+        .fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 5px;
+            padding: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="fps-counter" id="fpsCounter"></div>
+
+    <script>
+        // 预处理李白诗歌
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const uniqueChars = Array.from(new Set(poem)).filter(c => !/[，。！？、]/u.test(c));
+        const chars = [];
+        for (const c of poem) {
+            if (!chars.includes(c) && !/[，。！？、]/u.test(c)) {
+                chars.push(c);
+            }
+        }
+
+        // 颜色配置（从深到浅）
+        const colors = [
+            "#0f2350", "#17184b", "#1c305c", "#192f60", "#223a70",
+            "#2a4073", "#274a78", "#4a488e", "#4d4398", "#5654a2",
+            "#706caa", "#68699b", "#867ba9", "#8491c3", "#bbbcde",
+            "#bbc8e6", "#ebf6f7", "#e8ecef", "#eaedf7", "#eaf4fc"
+        ].reverse();
+
+        const TOTAL_FRAMES = 200;
+        let currentFrame = 0;
+        let avgFps = 0;
+        let lastTime = performance.now();
+        const fpsCounter = document.getElementById('fpsCounter');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Web Workers配置
+        const numWorkers = navigator.hardwareConcurrency || 4;
+        const workers = [];
+        const workerCode = `
+            self.onmessage = function(e) {
+                const { cols, startRow, endRow, centerX, currentScale, charSize, W, H, maxIterations, chars } = e.data;
+                const data = new Uint8Array((endRow - startRow) * cols * 2);
+                const colors = [
+                    "#0f2350", "#17184b", "#1c305c", "#192f60", "#223a70",
+                    "#2a4073", "#274a78", "#4a488e", "#4d4398", "#5654a2",
+                    "#706caa", "#68699b", "#867ba9", "#8491c3", "#bbbcde",
+                    "#bbc8e6", "#ebf6f7", "#e8ecef", "#eaedf7", "#eaf4fc"
+                ].reverse();
+
+                for (let j = startRow; j < endRow; j++) {
+                    for (let i = 0; i < cols; i++) {
+                        const x = centerX - (W/2 - i * charSize) / currentScale;
+                        const y = centerX - (H/2 - j * charSize) / currentScale;
+                        let zx = 0, zy = 0;
+                        let escapeTime = 0;
+
+                        for (let k = 0; k < maxIterations; k++) {
+                            const zxNew = zx * zx - zy * zy + x;
+                            const zyNew = 2 * zx * zy + y;
+                            zx = zxNew;
+                            zy = zyNew;
+                            if (zx * zx + zy * zy > 4) {
+                                escapeTime = k;
+                                break;
+                            }
+                        }
+
+                        if (escapeTime === maxIterations) continue;
+
+                        const colorIndex = Math.min(18, Math.floor(escapeTime / (maxIterations / 19)));
+                        const charIndex = colorIndex % chars.length;
+                        const index = ((j - startRow) * cols + i) * 2;
+                        data[index] = colorIndex;
+                        data[index + 1] = charIndex;
+                    }
+                }
+                self.postMessage(data, [data.buffer]);
+            };
+        `;
+
+        // 初始化Web Workers
+        for (let i = 0; i < numWorkers; i++) {
+            workers.push(new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' }))));
+        }
+
+        // 窗口大小调整处理
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 计算初始缩放比例
+        function calculateInitialScale() {
+            const W = canvas.width;
+            const H = canvas.height;
+            const initialWidth = 3;  // x范围：-2到1
+            const initialHeight = 2.5; // y范围：-1.25到1.25
+            const targetWidth = W * 0.5;
+            const targetHeight = H * 0.5;
+            return Math.min(targetWidth / initialWidth, targetHeight / initialHeight);
+        }
+
+        // 绘制帧
+        function drawFrame() {
+            const W = canvas.width;
+            const H = canvas.height;
+            const initialScale = calculateInitialScale();
+            const currentScale = initialScale * Math.pow(1.005, currentFrame);
+
+            // 清空画布
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, W, H);
+
+            // 计算字符网格
+            const charSize = 8;
+            const cols = Math.floor(W / charSize);
+            const rows = Math.floor(H / charSize);
+            const rowsPerWorker = Math.ceil(rows / numWorkers);
+
+            // 分发任务给Web Workers
+            const promises = [];
+            for (let i = 0; i < numWorkers; i++) {
+                const startRow = i * rowsPerWorker;
+                const endRow = Math.min(startRow + rowsPerWorker, rows);
+                const promise = new Promise(resolve => {
+                    workers[i].onmessage = e => resolve(e.data);
+                });
+                workers[i].postMessage({
+                    cols,
+                    startRow,
+                    endRow,
+                    centerX: -0.75,
+                    currentScale,
+                    charSize,
+                    W,
+                    H,
+                    maxIterations: 1000,
+                    chars
+                });
+                promises.push(promise);
+            }
+
+            // 合并结果并绘制
+            Promise.all(promises).then(results => {
+                const data = new Uint8Array(cols * rows * 2);
+                let offset = 0;
+                for (const result of results) {
+                    data.set(result, offset);
+                    offset += result.byteLength;
+                }
+
+                ctx.font = `${charSize}px monospace`;
+                ctx.textBaseline = 'top';
+                for (let j = 0; j < rows; j++) {
+                    let line = '';
+                    for (let i = 0; i < cols; i++) {
+                        const index = (j * cols + i) * 2;
+                        const colorIndex = data[index] || 0;
+                        const charIndex = data[index + 1] || 0;
+                        line += chars[charIndex % chars.length] || ' ';
+                    }
+                    if (line.trim()) {
+                        ctx.fillStyle = colors[colorIndex];
+                        ctx.fillText(line, i * charSize, j * charSize);
+                    }
+                }
+
+                // 更新FPS统计
+                const now = performance.now();
+                const deltaTime = now - lastTime;
+                lastTime = now;
+                const fps = 1000 / deltaTime;
+                avgFps += fps;
+
+                fpsCounter.textContent = 
+                    `FPS: ${Math.round(fps)} ` +
+                    `AVG FPS: ${Math.round(avgFps / (currentFrame + 1))} ` +
+                    `CURRENT FRAME: ${currentFrame + 1}/${TOTAL_FRAMES}`;
+
+                currentFrame = (currentFrame + 1) % TOTAL_FRAMES;
+                if (currentFrame === 0) avgFps = 0;
+
+                requestAnimationFrame(drawFrame);
+            });
+        }
+
+        // 启动动画
+        drawFrame();
+    </script>
+</body>
+</html>

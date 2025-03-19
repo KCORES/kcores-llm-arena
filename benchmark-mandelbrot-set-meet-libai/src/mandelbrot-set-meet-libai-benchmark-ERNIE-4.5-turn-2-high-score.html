@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Mandelbrot Set</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+    }
+    #fps {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 10px;
+      padding: 5px;
+      font-size: 14px;
+      color: black;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div id="fps">FPS: 0 | AVG FPS: 0 | CURRENT FRAME: 0/200</div>
+  <canvas id="mandelbrotCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById('mandelbrotCanvas');
+    const ctx = canvas.getContext('2d');
+    const fpsDisplay = document.getElementById('fps');
+
+    // Set canvas to full screen
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Mandelbrot parameters
+    let frame = 0;
+    const maxFrames = 200;
+    const zoomFactor = 1.005; // Zoom factor per frame
+    let zoom = 1; // Initial zoom
+    const colors = [
+      '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde',
+      '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398',
+      '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c',
+      '#17184b', '#0f2350'
+    ];
+    const poem = '静夜思床前明月光疑是地上霜举头望明月低头思故乡'; // 李白《静夜思》去重无标点
+    const chars = [...new Set(poem)].join(''); // 去重并保留顺序
+
+    // FPS calculation
+    let lastTime = performance.now();
+    let frameCount = 0;
+    let totalFPS = 0;
+
+    // Center of Mandelbrot set
+    const centerX = -0.5;
+    const centerY = 0;
+
+    // Resize canvas on window resize
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+
+    // Mandelbrot set calculation
+    function mandelbrot(x, y, maxIter) {
+      let zx = 0, zy = 0;
+      let iteration = 0;
+      while (zx * zx + zy * zy <= 4 && iteration < maxIter) {
+        const temp = zx * zx - zy * zy + x;
+        zy = 2 * zx * zy + y;
+        zx = temp;
+        iteration++;
+      }
+      return iteration;
+    }
+
+    // Render frame
+    function renderFrame() {
+      const startTime = performance.now();
+
+      // Calculate viewport
+      const viewWidth = 3 * zoom; // Initial width (50% of screen roughly)
+      const viewHeight = 3 * zoom; // Keep aspect ratio square
+      const xStart = centerX - viewWidth / 2;
+      const yStart = centerY - viewHeight / 2;
+
+      const imageData = ctx.createImageData(canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // Iterate over pixels
+      for (let py = 0; py < canvas.height; py++) {
+        for (let px = 0; px < canvas.width; px++) {
+          // Map pixel to Mandelbrot coordinates
+          const x = xStart + (px / canvas.width) * viewWidth;
+          const y = yStart + (py / canvas.height) * viewHeight;
+
+          // Calculate Mandelbrot value
+          const iter = mandelbrot(x, y, 1000); // Max iterations
+          const isMainCardioid = (x - 0.25) ** 2 + y ** 2 <= 0.25 / 4; // Approximation
+
+          // Determine character and color
+          let charIndex = 0;
+          let colorIndex = 0;
+          if (!isMainCardioid && iter < 1000) {
+            charIndex = iter % chars.length;
+            colorIndex = Math.floor((iter / 1000) * (colors.length - 1));
+          }
+
+          // Set pixel color and char (ASCII rendering handled by text later)
+          const color = colors[colors.length - 1 - colorIndex] || '#000000'; // Deepest to lightest
+          const char = isMainCardioid ? ' ' : chars[charIndex];
+
+          // Write to image data (simulating text with color blocks for now)
+          const col = hexToRgb(color);
+          for (let j = 0; j < 8; j++) { // Simulate 8px font size
+            for (let i = 0; i < 8; i++) {
+              const pixelIndex = ((py * 8 + j) * canvas.width + (px * 8 + i)) * 4;
+              data[pixelIndex] = col.r;
+              data[pixelIndex + 1] = col.g;
+              data[pixelIndex + 2] = col.b;
+              data[pixelIndex + 3] = 255; // Opaque
+            }
+          }
+        }
+      }
+
+      // Clear canvas and put image data
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.putImageData(imageData, 0, 0);
+
+      // Render text overlay (simulate ASCII by manually drawing text blocks)
+      ctx.font = '8px monospace';
+      ctx.fillStyle = '#000'; // Text color for debugging (not directly used for ASCII simulation)
+      ctx.textBaseline = 'top';
+
+      for (let py = 0; py < canvas.height / 8; py++) {
+        for (let px = 0; px < canvas.width / 8; px++) {
+          const x = xStart + (px / (canvas.width / 8)) * viewWidth;
+          const y = yStart + (py / (canvas.height / 8)) * viewHeight;
+          const iter = mandelbrot(x, y, 1000);
+          const isMainCardioid = (x - 0.25) ** 2 + y ** 2 <= 0.25 / 4;
+
+          let char = ' ';
+          if (!isMainCardioid && iter < 1000) {
+            char = chars[iter % chars.length];
+          }
+
+          ctx.fillStyle = colors[colors.length - 1 - Math.floor((iter / 1000) * (colors.length - 1))];
+          ctx.fillRect(px * 8, py * 8, 8, 8); // Simulate 8x8 font block
+          // Optionally draw text for debugging (comment out for pure color blocks)
+          // ctx.fillStyle = '#000'; 
+          // ctx.fillText(char, px * 8, py * 8);
+        }
+      }
+
+      // Update FPS
+      const endTime = performance.now();
+      const deltaTime = endTime - startTime;
+      const currentFPS = 1000 / deltaTime;
+      frameCount++;
+      totalFPS += currentFPS;
+
+      // Update frame and reset after maxFrames
+      frame++;
+      if (frame > maxFrames) {
+        frame = 0;
+        zoom = 1; // Reset zoom
+        totalFPS = 0; // Reset total FPS for new cycle
+        frameCount = 0;
+      } else {
+        zoom *= zoomFactor; // Zoom in
+      }
+
+      // Display FPS
+      fpsDisplay.textContent = `FPS: ${currentFPS.toFixed(1)} | AVG FPS: ${(totalFPS / frameCount).toFixed(1)} | CURRENT FRAME: ${frame}/${maxFrames}`;
+
+      // Request next frame
+      requestAnimationFrame(renderFrame);
+    }
+
+    // Hex to RGB conversion
+    function hexToRgb(hex) {
+      const bigint = parseInt(hex.slice(1), 16);
+      const r = (bigint >> 16) & 255;
+      const g = (bigint >> 8) & 255;
+      const b = bigint & 255;
+      return { r, g, b };
+    }
+
+    // Start rendering
+    renderFrame();
+  </script>
+</body>
+</html>

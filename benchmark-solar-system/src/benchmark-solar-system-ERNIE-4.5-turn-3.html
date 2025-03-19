@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System Animation</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+        canvas {
+            display: block;
+        }
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: black;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 5px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="stats">FPS: 0 | AVG FPS: 0 | Earth Day: 0</div>
+    <canvas id="solarSystem"></canvas>
+    <script>
+        const canvas = document.getElementById('solarSystem');
+        const ctx = canvas.getContext('2d');
+        const statsDiv = document.getElementById('stats');
+
+        // Resize canvas to fullscreen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Solar system data
+        const planets = [
+            { name: "Mercury", color: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"], orbitRadius: 60, size: 5 },
+            { name: "Venus", color: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"], orbitRadius: 90, size: 8 },
+            { name: "Earth", color: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"], orbitRadius: 120, size: 10 },
+            { name: "Mars", color: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"], orbitRadius: 150, size: 7 },
+            { name: "Jupiter", color: ["#282411", "#c08137", "#bfb09c", "#a6705b"], orbitRadius: 180, size: 15 },
+            { name: "Saturn", color: ["#f3cf89", "#dab778", "#736b59", "#c1a480"], orbitRadius: 210, size: 13 },
+            { name: "Uranus", color: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"], orbitRadius: 240, size: 11 },
+            { name: "Neptune", color: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"], orbitRadius: 270, size: 9 },
+            { name: "Pluto", color: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"], orbitRadius: 300, size: 6 }
+        ];
+
+        const sun = { color: ["#f2831f", "#f15d22", "#d94125", "#a41d22"], size: 30 };
+
+        let angle = 0; // Angle for planetary motion
+        let earthDayCounter = 0;
+        let lastTimestamp = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let frameCount = 0;
+
+        function drawPlanet(x, y, size, color) {
+            ctx.beginPath();
+            const gradient = ctx.createRadialGradient(x, y, size / 2, x, y, size);
+            color.forEach((c, i) => gradient.addColorStop(i / (color.length - 1), c));
+            ctx.fillStyle = gradient;
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawOrbit(x, y, radius) {
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+            ctx.lineWidth = 1;
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function drawLabel(x, y, text) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle); // Rotate labels to face camera
+            ctx.fillStyle = "white";
+            ctx.font = "12px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(text, 0, -20); // Offset text above planet
+            ctx.restore();
+        }
+
+        function drawSolarSystem() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Clear canvas
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw sun
+            drawPlanet(centerX, centerY, sun.size, sun.color);
+
+            // Draw planets and orbits
+            planets.forEach(planet => {
+                const orbitX = centerX + Math.cos(angle / planet.orbitRadius) * planet.orbitRadius;
+                const orbitY = centerY + Math.sin(angle / planet.orbitRadius) * planet.orbitRadius;
+                drawOrbit(centerX, centerY, planet.orbitRadius);
+                drawPlanet(orbitX, orbitY, planet.size, planet.color);
+                drawLabel(orbitX, orbitY, planet.name);
+            });
+        }
+
+        function update(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const elapsed = timestamp - lastTimestamp;
+
+            // Update angles and counters
+            const earthDaysPerFrame = (elapsed / 1000) * 10; // 1s = 10 Earth days
+            angle += (Math.PI / 180) * (earthDaysPerFrame / 365) * 2; // 365 days for full orbit
+            earthDayCounter += earthDaysPerFrame;
+
+            // FPS Calculation
+            fps = 1000 / elapsed;
+            avgFps = (avgFps * frameCount + fps) / (frameCount + 1);
+            frameCount++;
+
+            // Draw
+            drawSolarSystem();
+
+            // Update stats
+            statsDiv.textContent = `FPS: ${fps.toFixed(1)} | AVG FPS: ${avgFps.toFixed(1)} | Earth Day: ${Math.floor(earthDayCounter)}`;
+
+            lastTimestamp = timestamp;
+            requestAnimationFrame(update);
+        }
+
+        requestAnimationFrame(update);
+    </script>
+</body>
+</html>

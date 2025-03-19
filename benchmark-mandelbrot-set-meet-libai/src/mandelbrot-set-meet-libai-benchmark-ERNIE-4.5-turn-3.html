@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Mandelbrot Set</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: monospace;
+    }
+    canvas {
+      display: block;
+    }
+    #stats {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.7);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 14px;
+      color: black;
+    }
+  </style>
+</head>
+<body>
+  <div id="stats">
+    FPS: <span id="fps">0</span><br>
+    AVG FPS: <span id="avgFps">0</span><br>
+    CURRENT FRAME: <span id="currentFrame">0/200</span>
+  </div>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const stats = {
+      fpsElement: document.getElementById('fps'),
+      avgFpsElement: document.getElementById('avgFps'),
+      currentFrameElement: document.getElementById('currentFrame'),
+      frameCount: 0,
+      totalFrames: 200,
+      fpsSum: 0,
+      lastTime: performance.now()
+    };
+
+    // Set canvas to full screen
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Generate unique ordered characters from the poem
+    const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+    const uniqueChars = [...new Set(poem)].join('');
+    const chars = uniqueChars.split('').filter(c => /[\u4e00-\u9fa5]/.test(c)); // Remove non-Chinese chars (just in case)
+
+    // Color palette
+    const colors = [
+      "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde",
+      "#8491c3", "#867ba9", "#68699b", "#706caa", "#5654a2", "#4d4398",
+      "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c",
+      "#17184b", "#0f2350"
+    ];
+
+    // Mandelbrot parameters
+    let scale = 2.0; // Initial scale (50% of screen)
+    let offsetX = -0.75; // Centered at cardioid boundary
+    let offsetY = 0.0;
+    const maxIterations = 100;
+
+    function mandelbrot(c) {
+      let z = { re: 0, im: 0 };
+      for (let i = 0; i < maxIterations; i++) {
+        const temp = z.re * z.re - z.im * z.im + c.re;
+        z.im = 2 * z.re * z.im + c.im;
+        z.re = temp;
+        if (z.re * z.re + z.im * z.im > 4) return i;
+      }
+      return maxIterations; // Inside the set
+    }
+
+    function drawMandelbrot() {
+      const width = canvas.width;
+      const height = canvas.height;
+      const imageData = ctx.createImageData(width, height);
+      const data = imageData.data;
+
+      const charWidth = 8;
+      const charHeight = 8;
+      const rows = Math.ceil(height / charHeight);
+      const cols = Math.ceil(width / charWidth);
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = (col * charWidth - width / 2) / (0.5 * scale * width) + offsetX;
+          const y = (row * charHeight - height / 2) / (0.5 * scale * height) + offsetY;
+          const c = { re: x, im: y };
+          const iterations = mandelbrot(c);
+
+          if (iterations === maxIterations) continue; // Leave main cardioid blank
+
+          const charIndex = iterations % chars.length;
+          const colorIndex = Math.floor((1 - iterations / maxIterations) * (colors.length - 1));
+          const color = colors[colorIndex];
+
+          ctx.fillStyle = color;
+          ctx.font = `8px monospace`;
+          ctx.fillText(chars[charIndex], col * charWidth, row * charHeight);
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0); // Not used directly since we're using fillText
+    }
+
+    function drawFrame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawMandelbrot();
+
+      // Update stats
+      stats.frameCount++;
+      const now = performance.now();
+      const deltaTime = now - stats.lastTime;
+      const fps = 1000 / deltaTime;
+      stats.fpsSum += fps;
+      stats.lastTime = now;
+
+      stats.fpsElement.textContent = fps.toFixed(1);
+      stats.currentFrameElement.textContent = `${stats.frameCount}/${stats.totalFrames}`;
+
+      if (stats.frameCount === stats.totalFrames) {
+        const avgFps = stats.fpsSum / stats.totalFrames;
+        stats.avgFpsElement.textContent = avgFps.toFixed(1);
+        stats.frameCount = 0;
+        stats.fpsSum = 0;
+        scale = 2.0; // Reset scale
+      } else if (stats.frameCount % 2 === 0) {
+        scale *= 1.005; // Zoom in 0.5% every 2 frames for smoother animation
+      }
+
+      requestAnimationFrame(drawFrame);
+    }
+
+    drawFrame();
+  </script>
+</body>
+</html>

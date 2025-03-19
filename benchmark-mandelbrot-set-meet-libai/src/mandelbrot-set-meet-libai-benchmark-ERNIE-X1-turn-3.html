@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+        .fps-counter {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            padding: 8px 16px;
+            color: #000;
+            font-family: monospace;
+            font-size: 14px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="fps-counter" id="fpsCounter"></div>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsCounter = document.getElementById('fpsCounter');
+
+        // 预处理诗歌字符
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const chars = [...new Set(poem)].filter(c => /[\u4e00-\u9fa5]/.test(c));
+
+        // 颜色配置（反转顺序以便从深到浅使用）
+        const colors = [
+            '#0f2350', '#17184b', '#1c305c', '#192f60',
+            '#223a70', '#2a4073', '#274a78', '#4a488e',
+            '#4d4398', '#5654a2', '#706caa', '#68699b',
+            '#867ba9', '#8491c3', '#bbbcde', '#bbc8e6',
+            '#ebf6f7', '#e8ecef', '#eaedf7', '#eaf4fc'
+        ].reverse();
+
+        // 动画参数
+        let centerX = -0.5, centerY = 0;
+        let viewSize = 0, targetSize = 0;
+        let frameCount = 0, maxFrames = 200;
+        let isReset = false;
+        const maxIterations = 255;
+        const escapeRadius = 2;
+
+        // 性能监控
+        const frameTimes = [];
+        let lastTime = 0;
+        let avgFps = 0;
+
+        // 初始化
+        function init() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            viewSize = Math.min(canvas.width, canvas.height) * 0.5;
+            targetSize = viewSize;
+            startAnimation();
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // 分块渲染优化
+        const chunkSize = 64;
+        let renderQueue = [];
+
+        function computeChunk(x, y, w, h) {
+            const data = new Uint8Array(w * h);
+            const dx = (viewSize * 2) / w;
+            const dy = (viewSize * 2) / h;
+            
+            for (let py = 0; py < h; py++) {
+                for (let px = 0; px < w; px++) {
+                    let zx = 0, zy = 0;
+                    let iter = 0;
+                    const cx = centerX - viewSize + px * dx;
+                    const cy = centerY - viewSize + py * dy + y * dy;
+                    
+                    while (iter < maxIterations && zx*zx + zy*zy <= escapeRadius*escapeRadius) {
+                        const temp = zx*zx - zy*zy + cx;
+                        zy = 2*zx*zy + cy;
+                        zx = temp;
+                        iter++;
+                    }
+                    
+                    data[py * w + px] = iter === maxIterations ? 0 : iter;
+                }
+            }
+            return data;
+        }
+
+        function renderChunk(data, x, y, w, h) {
+            ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            ctx.fillRect(x*8, y*8, w*8, h*8);
+            
+            ctx.font = '8px monospace';
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+            
+            let charIndex = 0;
+            for (let py = 0; py < h; py++) {
+                for (let px = 0; px < w; px++) {
+                    const iter = data[py * w + px];
+                    if (iter === 0) continue;
+                    
+                    const color = colors[Math.min(
+                        Math.floor((iter / maxIterations) * (colors.length - 1)),
+                        colors.length - 1
+                    )];
+                    
+                    ctx.fillStyle = color;
+                    ctx.fillText(
+                        chars[charIndex % chars.length],
+                        (x + px) * 8,
+                        (y + py) * 8
+                    );
+                    charIndex++;
+                }
+            }
+        }
+
+        // 动画循环
+        function animate(timestamp) {
+            if (isReset) {
+                frameCount = 0;
+                viewSize = Math.min(canvas.width, canvas.height) * 0.5;
+                targetSize = viewSize;
+                isReset = false;
+                avgFps = 0;
+                frameTimes.length = 0;
+            }
+
+            // 更新FPS
+            if (lastTime) {
+                frameTimes.push(timestamp - lastTime);
+                if (frameTimes.length > 100) frameTimes.shift();
+                const currentFps = 1000 / (frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length || 1);
+                avgFps = frameCount >= maxFrames ? 
+                    Math.round(1000 / (frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length)) : 
+                    avgFps;
+                
+                fpsCounter.textContent = `FPS: ${currentFps.toFixed(1)} | AVG: ${avgFps} | FRAME: ${frameCount + 1}/${maxFrames}`;
+            }
+            lastTime = timestamp;
+
+            // 更新视图大小
+            if (frameCount < maxFrames) {
+                targetSize *= 0.995;
+                viewSize = lerp(viewSize, targetSize, 0.1);
+            }
+
+            // 分块渲染
+            const chunksPerFrame = 4;
+            while (renderQueue.length < chunksPerFrame && frameCount < maxFrames) {
+                const y = renderQueue.length * chunkSize;
+                if (y >= canvas.height / 8) break;
+                
+                const chunkHeight = Math.min(chunkSize, (canvas.height / 8 - y) | 0);
+                const data = computeChunk(0, y, canvas.width / 8, chunkHeight);
+                renderQueue.push({ data, y, height: chunkHeight });
+            }
+
+            while (renderQueue.length) {
+                const { data, y, height } = renderQueue.shift();
+                renderChunk(data, 0, y, canvas.width / 8, height);
+            }
+
+            frameCount++;
+            if (frameCount >= maxFrames) {
+                isReset = true;
+                frameCount = 0;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 线性插值
+        function lerp(a, b, t) {
+            return a + (b - a) * t;
+        }
+
+        // 启动动画
+        init();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

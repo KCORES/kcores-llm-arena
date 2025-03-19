@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+        #fps {
+            position: absolute;
+            left: 8px;
+            top: 8px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: monospace;
+            font-size: 12px;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps"></div>
+    <script>
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const chars = [];
+        const seen = new Set();
+        for (const c of poem) {
+            if (!/[，。？]/u.test(c) && !seen.has(c)) {
+                seen.add(c);
+                chars.push(c);
+            }
+        }
+
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde",
+            "#8491c3", "#867ba9", "#68699b", "#706caa", "#5654a2", "#4d4398",
+            "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c",
+            "#17184b", "#0f2350"
+        ].reverse();
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsElement = document.getElementById('fps');
+
+        let currentFrame = 0;
+        let scale = 1;
+        const centerX = -0.75;
+        const centerY = 0;
+        const maxIterations = 255;
+        const charCount = chars.length;
+        const colorCount = colors.length;
+
+        function calculateInitialScale() {
+            const width = canvas.width;
+            const initialSize = width * 0.5;
+            return 3 / initialSize;
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            scale = calculateInitialScale();
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        const charOrder = new Uint8Array(maxIterations);
+        const colorMap = new Uint8Array(maxIterations);
+        for (let i = 0; i < maxIterations; i++) {
+            charOrder[i] = i % charCount;
+            colorMap[i] = Math.floor((maxIterations - i) / maxIterations * (colorCount - 1));
+        }
+
+        let lastFrameTime = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let frameCount = 0;
+
+        function computeMandelbrot(scale, centerX, centerY) {
+            const width = canvas.width;
+            const height = canvas.height;
+            const gridSize = 8;
+            const cols = Math.ceil(width / gridSize);
+            const rows = Math.ceil(height / gridSize);
+
+            const charIndices = new Uint8Array(cols * rows);
+            const colorIndices = new Uint8Array(cols * rows);
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const idx = y * cols + x;
+                    const xCoord = centerX + (x * gridSize + 4) * scale / width;
+                    const yCoord = centerY + (y * gridSize + 4) * scale / height;
+
+                    let zr = 0, zi = 0;
+                    let escapeTime = 0;
+                    while (escapeTime < maxIterations) {
+                        const zr2 = zr * zr;
+                        const zi2 = zi * zi;
+                        if (zr2 + zi2 > 4) break;
+                        const newZr = zr2 - zi2 + xCoord;
+                        const newZi = 2 * zr * zi + yCoord;
+                        zr = newZr;
+                        zi = newZi;
+                        escapeTime++;
+                    }
+
+                    if (escapeTime < maxIterations) {
+                        charIndices[idx] = charOrder[escapeTime];
+                        colorIndices[idx] = colorMap[escapeTime];
+                    } else {
+                        charIndices[idx] = 0;
+                        colorIndices[idx] = 0;
+                    }
+                }
+            }
+
+            return { charIndices, colorIndices, cols, rows };
+        }
+
+        function draw(data) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.font = '8px monospace';
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+
+            const { charIndices, colorIndices, cols, rows } = data;
+            const gridSize = 8;
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const idx = y * cols + x;
+                    const charIdx = charIndices[idx];
+                    const colorIdx = colorIndices[idx];
+
+                    if (charIdx === 0) continue;
+
+                    ctx.fillStyle = colors[colorIdx];
+                    ctx.fillText(chars[charIdx], x * gridSize, y * gridSize);
+                }
+            }
+        }
+
+        function animate(timestamp) {
+            const now = timestamp || performance.now();
+            const delta = now - lastFrameTime;
+            fps = 1000 / delta;
+            avgFps = (avgFps * frameCount + fps) / (frameCount + 1);
+            frameCount++;
+            lastFrameTime = now;
+
+            const currentScale = scale * Math.pow(1.005, currentFrame);
+            const data = computeMandelbrot(currentScale, centerX, centerY);
+            draw(data);
+
+            fpsElement.textContent = 
+                `FPS: ${Math.round(fps)} AVG FPS: ${Math.round(avgFps)} ` +
+                `CURRENT FRAME: ${currentFrame + 1}/200`;
+
+            currentFrame = (currentFrame + 1) % 200;
+            if (currentFrame === 0) {
+                scale = calculateInitialScale();
+                avgFps = 0;
+                frameCount = 0;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
