@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Set</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: monospace;
+            color: black;
+        }
+        #fps-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 10px;
+            padding: 5px 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="fps-info">
+        FPS: 0<br>
+        AVG FPS: 0<br>
+        CURRENT FRAME: 0/200
+    </div>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+        const fpsInfo = document.getElementById('fps-info');
+
+        let frame = 0;
+        let totalFrames = 200;
+        let fpsList = [];
+        let lastTimestamp = 0;
+
+        // Set canvas to full screen
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Poetry characters (Li Bai's "Jing Ye Si"), deduplicated and without punctuation
+        const poemChars = [...new Set("床前明月光疑是地上霜举头望明月低头思故乡")].join('');
+
+        // Color palette (from light to dark)
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde", 
+            "#8491c3", "#867ba9", "#68699b", "#706caa", "#5654a2", "#4d4398", 
+            "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c", 
+            "#17184b", "#0f2350"
+        ];
+
+        // Mandelbrot set parameters
+        let scale = 1.0;
+        const maxIterations = 100;
+        const initialScale = 0.5; // Initial size is 50% of screen
+        const scaleIncrement = 0.005; // Increase scale by 0.5% per frame
+
+        function mandelbrot(x, y, maxIter) {
+            let zx = 0, zy = 0;
+            let iteration = 0;
+            while (zx * zx + zy * zy <= 4 && iteration < maxIter) {
+                const temp = zx * zx - zy * zy + x;
+                zy = 2 * zx * zy + y;
+                zx = temp;
+                iteration++;
+            }
+            return iteration;
+        }
+
+        function drawMandelbrot() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
+
+            const centerX = 0;
+            const centerY = 0;
+            const viewWidth = 3.5 * scale; // Adjust view width for better centering
+            const viewHeight = 2.5 * scale; // Adjust view height
+
+            for (let py = 0; py < height; py++) {
+                for (let px = 0; px < width; px++) {
+                    const real = (px / width) * viewWidth - viewWidth / 2 + centerX;
+                    const imag = (py / height) * viewHeight - viewHeight / 2 + centerY;
+                    const iter = mandelbrot(real, imag, maxIterations);
+
+                    const charIndex = iter % poemChars.length;
+                    const colorIndex = Math.floor((iter / maxIterations) * colors.length);
+                    const color = colors[colors.length - 1 - colorIndex]; // Reversed for darker on the outside
+
+                    const col = hexToRgb(color);
+                    const index = (py * width + px) * 4;
+                    data[index] = col.r;
+                    data[index + 1] = col.g;
+                    data[index + 2] = col.b;
+                    data[index + 3] = 255; // Fully opaque
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            // Draw ASCII characters based on pixel data
+            ctx.font = '8px monospace';
+            ctx.fillStyle = 'black';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            for (let py = 0; py < height; py += 8) {
+                for (let px = 0; px < width; px += 8) {
+                    const iter = mandelbrot(
+                        ((px + 4) / width) * viewWidth - viewWidth / 2 + centerX,
+                        ((py + 4) / height) * viewHeight - viewHeight / 2 + centerY,
+                        maxIterations
+                    );
+                    if (iter === maxIterations) continue; // Leave main cardioid empty
+
+                    const charIndex = iter % poemChars.length;
+                    ctx.fillText(poemChars[charIndex], px, py);
+                }
+            }
+        }
+
+        function hexToRgb(hex) {
+            const bigint = parseInt(hex.slice(1), 16);
+            return {
+                r: (bigint >> 16) & 255,
+                g: (bigint >> 8) & 255,
+                b: bigint & 255
+            };
+        }
+
+        function updateFPS() {
+            const now = performance.now();
+            const elapsed = now - lastTimestamp;
+            if (elapsed > 1000) {
+                const avgFPS = fpsList.reduce((a, b) => a + b, 0) / fpsList.length || 0;
+                fpsInfo.innerHTML = `
+                    FPS: ${fpsList[fpsList.length - 1].toFixed(1)}<br>
+                    AVG FPS: ${avgFPS.toFixed(1)}<br>
+                    CURRENT FRAME: ${frame + 1}/${totalFrames}
+                `;
+                fpsList = [];
+                lastTimestamp = now;
+            }
+        }
+
+        function animate() {
+            const now = performance.now();
+            drawMandelbrot();
+            const elapsed = now - (lastTimestamp || now);
+            const fps = 1000 / elapsed;
+            fpsList.push(fps);
+            lastTimestamp = now;
+
+            frame = (frame + 1) % totalFrames;
+            if (frame === 0) scale = initialScale; // Reset scale at the end of the cycle
+            else scale += scaleIncrement; // Increase scale
+
+            updateFPS();
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

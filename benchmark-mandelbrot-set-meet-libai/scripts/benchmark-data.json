@@ -460,6 +460,48 @@
         "point_16": 0,
         "point_17": 0,
         "Final-Score": 0
+    },
+    {
+        "LLM": "ERNIE-4.5",
+        "point_1": 5,
+        "point_2": 5,
+        "point_3": 5,
+        "point_4": 3,
+        "point_5": 5,
+        "point_6": 0,
+        "point_7": 5,
+        "point_8": 5,
+        "point_9": 0,
+        "point_10": 0,
+        "point_11": 3,
+        "point_12": 5,
+        "point_13": 0,
+        "point_14": 0,
+        "point_15": 5,
+        "point_16": 5,
+        "point_17": 0,
+        "Final-Score": 51
+    },
+    {
+        "LLM": "ERNIE-X1",
+        "point_1": 0,
+        "point_2": 0,
+        "point_3": 0,
+        "point_4": 0,
+        "point_5": 0,
+        "point_6": 0,
+        "point_7": 0,
+        "point_8": 0,
+        "point_9": 0,
+        "point_10": 0,
+        "point_11": 0,
+        "point_12": 0,
+        "point_13": 0,
+        "point_14": 0,
+        "point_15": 0,
+        "point_16": 0,
+        "point_17": 0,
+        "Final-Score": 0
     }
 ]
 
