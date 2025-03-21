@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 5px;
+            padding: 5px;
+            font-family: Arial, sans-serif;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="main-canvas"></canvas>
+    <div id="fps-counter">
+        FPS: <span id="fps">0</span><br>
+        AVG FPS: <span id="avg-fps">0</span><br>
+        Earth Day: <span id="earth-day">0</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d');
+        const offscreenCanvas = document.createElement('canvas');
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        offscreenCanvas.width = canvas.width;
+        offscreenCanvas.height = canvas.height;
+
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        const planets = [
+            { name: 'Mercury', distance: 50, size: 5, period: 88, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'] },
+            { name: 'Venus', distance: 100, size: 7, period: 225, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'] },
+            { name: 'Earth', distance: 150, size: 8, period: 365, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'] },
+            { name: 'Mars', distance: 200, size: 6, period: 687, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'] },
+            { name: 'Jupiter', distance: 250, size: 20, period: 4333, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'] },
+            { name: 'Saturn', distance: 300, size: 18, period: 10759, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'] },
+            { name: 'Uranus', distance: 350, size: 14, period: 30687, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'] },
+            { name: 'Neptune', distance: 400, size: 13, period: 60190, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'] },
+            { name: 'Pluto', distance: 450, size: 4, period: 90560, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'] }
+        ];
+
+        const sun = { name: 'Sun', size: 30, colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'] };
+
+        // Draw orbits on off - screen canvas
+        planets.forEach(planet => {
+            offscreenCtx.beginPath();
+            offscreenCtx.arc(centerX, centerY, planet.distance, 0, 2 * Math.PI);
+            offscreenCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            offscreenCtx.stroke();
+        });
+
+        // Web Worker for position calculation
+        const worker = new Worker(URL.createObjectURL(new Blob([`
+            onmessage = function(e) {
+                const { time, planets } = e.data;
+                const positions = planets.map(planet => {
+                    const angle = (2 * Math.PI * (time % planet.period)) / planet.period;
+                    const x = centerX + planet.distance * Math.cos(angle);
+                    const y = centerY + planet.distance * Math.sin(angle);
+                    return { x, y };
+                });
+                postMessage(positions);
+            };
+        `], { type: 'application/javascript' })));
+
+        let earthDay = 0;
+        let fps = 0;
+        let frameCount = 0;
+        let startTime = performance.now();
+        let totalFps = 0;
+
+        function drawPlanet(ctx, x, y, size, colors) {
+            const imageData = ctx.createImageData(size * 2, size * 2);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const colorIndex = Math.floor(Math.random() * colors.length);
+                const color = colors[colorIndex];
+                const r = parseInt(color.slice(1, 3), 16);
+                const g = parseInt(color.slice(3, 5), 16);
+                const b = parseInt(color.slice(5, 7), 16);
+                data[i] = r;
+                data[i + 1] = g;
+                data[i + 2] = b;
+                data[i + 3] = 255;
+            }
+            ctx.putImageData(imageData, x - size, y - size);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(offscreenCanvas, 0, 0);
+
+            const now = performance.now();
+            const elapsed = now - startTime;
+            if (elapsed >= 1000) {
+                fps = frameCount;
+                totalFps += fps;
+                frameCount = 0;
+                startTime = now;
+            }
+            frameCount++;
+
+            const avgFps = totalFps / (Math.floor(now / 1000) + 1);
+            document.getElementById('fps').textContent = fps;
+            document.getElementById('avg-fps').textContent = avgFps.toFixed(2);
+            document.getElementById('earth-day').textContent = earthDay;
+
+            earthDay += 10;
+
+            worker.postMessage({ time: earthDay, planets });
+        }
+
+        worker.onmessage = function (e) {
+            const positions = e.data;
+
+            // Draw the sun
+            drawPlanet(ctx, centerX, centerY, sun.size, sun.colors);
+            ctx.font = '12px Arial';
+            ctx.fillStyle = 'white';
+            ctx.fillText(`[${sun.name}]`, centerX + sun.size + 5, centerY);
+
+            // Draw planets
+            positions.forEach((position, index) => {
+                const planet = planets[index];
+                drawPlanet(ctx, position.x, position.y, planet.size, planet.colors);
+                ctx.fillText(`[${planet.name}]`, position.x + planet.size + 5, position.y);
+            });
+
+            requestAnimationFrame(draw);
+        };
+
+        draw();
+    </script>
+</body>
+
+</html>

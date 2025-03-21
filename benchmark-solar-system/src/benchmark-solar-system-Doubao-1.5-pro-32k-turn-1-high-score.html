@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 5px;
+            padding: 5px;
+            font-family: Arial, sans-serif;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mainCanvas"></canvas>
+    <div id="fps-counter">
+        FPS: 0<br>
+        AVG FPS: 0<br>
+        Earth Day: 0
+    </div>
+    <script>
+        const mainCanvas = document.getElementById('mainCanvas');
+        const ctx = mainCanvas.getContext('2d');
+        const fpsCounter = document.getElementById('fps-counter');
+
+        // 设置全屏
+        function setFullScreen() {
+            mainCanvas.width = window.innerWidth;
+            mainCanvas.height = window.innerHeight;
+        }
+        setFullScreen();
+        window.addEventListener('resize', setFullScreen);
+
+        // 行星数据
+        const planets = [
+            { name: '水星', distance: 58, radius: 2, period: 88, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'] },
+            { name: '金星', distance: 108, radius: 4, period: 225, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'] },
+            { name: '地球', distance: 150, radius: 4, period: 365, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'] },
+            { name: '火星', distance: 228, radius: 3, period: 687, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'] },
+            { name: '木星', distance: 778, radius: 15, period: 4333, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'] },
+            { name: '土星', distance: 1433, radius: 12, period: 10759, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'] },
+            { name: '天王星', distance: 2872, radius: 8, period: 30688, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'] },
+            { name: '海王星', distance: 4495, radius: 8, period: 60182, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'] },
+            { name: '冥王星', distance: 5906, radius: 1, period: 90560, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'] }
+        ];
+        const sun = { name: '太阳', radius: 30, colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'] };
+
+        // 离屏canvas绘制轨道
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = mainCanvas.width;
+        offscreenCanvas.height = mainCanvas.height;
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+        const centerX = mainCanvas.width / 2;
+        const centerY = mainCanvas.height / 2;
+
+        offscreenCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        offscreenCtx.lineWidth = 1;
+        planets.forEach(planet => {
+            offscreenCtx.beginPath();
+            offscreenCtx.arc(centerX, centerY, planet.distance, 0, 2 * Math.PI);
+            offscreenCtx.stroke();
+        });
+
+        // Web Worker 进行位置计算
+        const worker = new Worker(URL.createObjectURL(new Blob([`
+            onmessage = function (e) {
+                const { time, planets, centerX, centerY } = e.data;
+                const planetPositions = planets.map(planet => {
+                    const angle = (time / planet.period) * 2 * Math.PI;
+                    const x = centerX + planet.distance * Math.cos(angle);
+                    const y = centerY + planet.distance * Math.sin(angle);
+                    return { x, y };
+                });
+                postMessage(planetPositions);
+            };
+        `], { type: 'text/javascript' })));
+
+        // 性能相关
+        let prevTime = performance.now();
+        let frameCount = 0;
+        let totalFPS = 0;
+        let avgFPS = 0;
+        let earthDay = 0;
+
+        // 绘制星球
+        function drawPlanet(ctx, x, y, radius, colors) {
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+            const step = 1 / colors.length;
+            colors.forEach((color, index) => {
+                gradient.addColorStop(index * step, color);
+                gradient.addColorStop((index + 1) * step, color);
+            });
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, 2 * Math.PI);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+
+        // 绘制标签
+        function drawLabel(ctx, x, y, text) {
+            ctx.font = '12px Arial';
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.fillText(`[${text}]`, x, y - 10);
+        }
+
+        // 动画循环
+        function animate(time) {
+            const deltaTime = (time - prevTime) / 1000;
+            prevTime = time;
+            earthDay += deltaTime * 10;
+
+            // 计算FPS
+            frameCount++;
+            totalFPS += 1 / deltaTime;
+            avgFPS = totalFPS / frameCount;
+            fpsCounter.innerHTML = `FPS: ${Math.round(1 / deltaTime)}<br>AVG FPS: ${Math.round(avgFPS)}<br>Earth Day: ${Math.round(earthDay)}`;
+
+            // 清空画布
+            ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+
+            // 绘制轨道
+            ctx.drawImage(offscreenCanvas, 0, 0);
+
+            // 绘制太阳
+            drawPlanet(ctx, centerX, centerY, sun.radius, sun.colors);
+            drawLabel(ctx, centerX, centerY, sun.name);
+
+            // 计算行星位置
+            worker.postMessage({ time: earthDay, planets, centerX, centerY });
+            worker.onmessage = function (e) {
+                const planetPositions = e.data;
+                planetPositions.forEach(({ x, y }, index) => {
+                    const planet = planets[index];
+                    drawPlanet(ctx, x, y, planet.radius, planet.colors);
+                    drawLabel(ctx, x, y, planet.name);
+                });
+            };
+
+            requestAnimationFrame(animate);
+        }
+
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

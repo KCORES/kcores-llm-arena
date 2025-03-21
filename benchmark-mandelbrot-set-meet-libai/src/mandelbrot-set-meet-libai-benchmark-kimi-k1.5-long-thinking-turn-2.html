@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set ASCII 动画</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+            font-family: monospace;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+            padding: 10px;
+            font-size: 14px;
+            color: black;
+            display: flex;
+            align-items: center;
+        }
+        
+        #stats div {
+            margin-right: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="stats">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>CURRENT FRAME: <span id="currentFrame">0</span>/200</div>
+    </div>
+    <canvas id="asciiCanvas"></canvas>
+
+    <script>
+        // 获取李白《静夜思》的字符集并去重
+        const poem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+        let uniqueChars = [...new Set(poem.replace(/[\u4e00-\u9fa5]/g, ''))];
+        uniqueChars = uniqueChars.filter(c => !/[^\u4e00-\u9fa5]/.test(c));
+        const charCount = uniqueChars.length;
+        
+        // Mandelbrot Set 颜色数组（由浅到深）
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde',
+            '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398',
+            '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c',
+            '#17184b', '#0f2350'
+        ];
+        const colorCount = colors.length;
+        
+        // 获取Canvas和上下文
+        const canvas = document.getElementById('asciiCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 设置Canvas全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // 字体设置
+        const fontSize = 8;
+        ctx.font = `${fontSize}px monospace`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        
+        // Mandelbrot Set 计算参数
+        let scale = 0.005;
+        let offsetX = -0.7;
+        let offsetY = 0;
+        const maxIterations = 50;
+        const zoomFactor = 1.005; // 每帧放大0.5%
+        const resetThreshold = 200; // 200帧后重置
+        
+        // 统计FPS
+        let frameCount = 0;
+        let lastTime = 0;
+        let fps = 0;
+        let totalFps = 0;
+        let avgFps = 0;
+        let currentFrame = 0;
+        
+        // Mandelbrot Set 计算
+        function mandelbrot(cx, cy) {
+            let x = 0, y = 0;
+            let iter = 0;
+            const x2 = x * x;
+            const y2 = y * y;
+            
+            // 主心形和周期芽部分留空
+            const inMainCardioid = ((cx + 1) ** 2 + cy ** 2) < (1 / 4);
+            const inPeriodBulb = (cx < -1.5) && (cy ** 2 < -cx - 1.75);
+            
+            if (inMainCardioid || inPeriodBulb) {
+                return -1; // 留空部分
+            }
+            
+            while (x2 + y2 <= 4 && iter < maxIterations) {
+                const xtemp = x * x - y * y + cx;
+                y = 2 * x * y + cy;
+                x = xtemp;
+                x2 = x * x;
+                y2 = y * y;
+                iter++;
+            }
+            
+            return iter;
+        }
+        
+        // 渲染函数
+        function render() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            // 计算每个像素
+            for (let y = 0; y < height; y += fontSize) {
+                for (let x = 0; x < width; x += fontSize) {
+                    const relX = (x - centerX) * scale + offsetX;
+                    const relY = (y - centerY) * scale + offsetY;
+                    
+                    const iterations = mandelbrot(relX, relY);
+                    
+                    if (iterations === maxIterations) {
+                        // 属于 Mandelbrot Set，留空
+                        ctx.fillStyle = 'black';
+                        ctx.fillRect(x, y, fontSize, fontSize);
+                    } else if (iterations === -1) {
+                        // 主心形和周期芽部分留空
+                        ctx.fillStyle = 'black';
+                        ctx.fillRect(x, y, fontSize, fontSize);
+                    } else {
+                        // 根据迭代次数选择颜色和字符
+                        const colorIndex = Math.min(Math.floor((maxIterations - iterations) / (maxIterations / colorCount)), colorCount - 1);
+                        const charIndex = Math.floor((maxIterations - iterations) / (maxIterations / charCount)) % charCount;
+                        
+                        ctx.fillStyle = colors[colorIndex];
+                        ctx.fillText(uniqueChars[charIndex], x, y);
+                    }
+                }
+            }
+            
+            // 更新缩放和偏移
+            scale *= zoomFactor;
+            offsetX *= zoomFactor;
+            offsetY *= zoomFactor;
+            
+            // 更新帧数和FPS
+            frameCount++;
+            currentFrame = (currentFrame + 1) % resetThreshold;
+            
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                fps = frameCount;
+                totalFps += fps;
+                avgFps = totalFps / (Math.floor(now / 1000));
+                document.getElementById('fps').textContent = fps;
+                document.getElementById('avgFps').textContent = avgFps.toFixed(1);
+                document.getElementById('currentFrame').textContent = currentFrame;
+                frameCount = 0;
+                lastTime = now;
+            }
+            
+            // 200帧后重置
+            if (currentFrame === 0) {
+                scale = 0.005;
+                offsetX = -0.7;
+                offsetY = 0;
+            }
+            
+            requestAnimationFrame(render);
+        }
+        
+        // 开始渲染
+        render();
+    </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fps-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 5px;
+            padding: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <div id="fps-indicator">
+        <p>FPS: <span id="fps">0</span></p>
+        <p>AVG FPS: <span id="avg-fps">0</span></p>
+        <p>CURRENT FRAME: <span id="current-frame">0/200</span></p>
+    </div>
+    <script>
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+        const fpsElement = document.getElementById('fps');
+        const avgFpsElement = document.getElementById('avg-fps');
+        const currentFrameElement = document.getElementById('current-frame');
+
+        // 初始化画布大小
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 李白《静夜思》去重并去除标点符号
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const uniqueChars = [...new Set(poem)].join('');
+
+        // Mandelbrot Set 字符颜色候选集
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6",
+            "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+            "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073",
+            "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ];
+
+        // 初始参数
+        let zoom = 0.5;
+        let frameCount = 0;
+        let totalFps = 0;
+        let startTime = performance.now();
+
+        function drawMandelbrot() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerX = -0.75; // Main cardioid and period bulbs 的交界处
+            const centerY = 0;
+            const maxIterations = 100;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = '8px monospace';
+
+            for (let x = 0; x < width; x += 8) {
+                for (let y = 0; y < height; y += 8) {
+                    const real = (x / width) * (4 / zoom) - (2 / zoom) + centerX;
+                    const imag = (y / height) * (4 / zoom) - (2 / zoom) + centerY;
+
+                    let zReal = 0;
+                    let zImag = 0;
+                    let iteration = 0;
+
+                    while (zReal * zReal + zImag * zImag <= 4 && iteration < maxIterations) {
+                        const temp = zReal * zReal - zImag * zImag + real;
+                        zImag = 2 * zReal * zImag + imag;
+                        zReal = temp;
+                        iteration++;
+                    }
+
+                    if (iteration < maxIterations) {
+                        const colorIndex = Math.floor((iteration / maxIterations) * colors.length);
+                        ctx.fillStyle = colors[colorIndex];
+                        const charIndex = iteration % uniqueChars.length;
+                        ctx.fillText(uniqueChars[charIndex], x, y + 8);
+                    }
+                }
+            }
+        }
+
+        function updateFps() {
+            const now = performance.now();
+            const elapsed = now - startTime;
+            const fps = 1000 / elapsed;
+            fpsElement.textContent = fps.toFixed(2);
+            totalFps += fps;
+            startTime = now;
+        }
+
+        function animate() {
+            drawMandelbrot();
+            updateFps();
+
+            frameCount++;
+            currentFrameElement.textContent = `${frameCount}/200`;
+
+            if (frameCount >= 200) {
+                zoom = 0.5;
+                frameCount = 0;
+                const avgFps = totalFps / 200;
+                avgFpsElement.textContent = avgFps.toFixed(2);
+                totalFps = 0;
+            } else {
+                zoom *= 1.005;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>
