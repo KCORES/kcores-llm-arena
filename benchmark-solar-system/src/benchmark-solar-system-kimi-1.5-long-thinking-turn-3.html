@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>太阳系动画</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+        }
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 10px;
+            font-family: Arial, sans-serif;
+            color: #000;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="stats"></div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // 获取Canvas元素和上下文
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statsDiv = document.getElementById('stats');
+
+        // 设置Canvas为全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 太阳系天体数据
+        const celestialBodies = [
+            {
+                name: "太阳",
+                radius: 60,
+                orbitRadius: 0,
+                color: ["#f2831f", "#f15d22", "#d94125", "#a41d22"],
+                rotationSpeed: 0.001,
+                orbitSpeed: 0,
+                angle: 0
+            },
+            {
+                name: "水星",
+                radius: 8,
+                orbitRadius: 100,
+                color: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"],
+                rotationSpeed: 0.01,
+                orbitSpeed: 0.05,
+                angle: 0
+            },
+            {
+                name: "金星",
+                radius: 12,
+                orbitRadius: 150,
+                color: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"],
+                rotationSpeed: 0.005,
+                orbitSpeed: 0.03,
+                angle: 0
+            },
+            {
+                name: "地球",
+                radius: 14,
+                orbitRadius: 200,
+                color: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"],
+                rotationSpeed: 0.01,
+                orbitSpeed: 0.02,
+                angle: 0
+            },
+            {
+                name: "火星",
+                radius: 10,
+                orbitRadius: 250,
+                color: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"],
+                rotationSpeed: 0.015,
+                orbitSpeed: 0.015,
+                angle: 0
+            },
+            {
+                name: "木星",
+                radius: 30,
+                orbitRadius: 320,
+                color: ["#282411", "#c08137", "#bfb09c", "#a6705b"],
+                rotationSpeed: 0.02,
+                orbitSpeed: 0.005,
+                angle: 0
+            },
+            {
+                name: "土星",
+                radius: 25,
+                orbitRadius: 400,
+                color: ["#f3cf89", "#dab778", "#736b59", "#c1a480"],
+                rotationSpeed: 0.01,
+                orbitSpeed: 0.003,
+                angle: 0
+            },
+            {
+                name: "天王星",
+                radius: 18,
+                orbitRadius: 480,
+                color: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"],
+                rotationSpeed: 0.008,
+                orbitSpeed: 0.002,
+                angle: 0
+            },
+            {
+                name: "海王星",
+                radius: 18,
+                orbitRadius: 560,
+                color: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"],
+                rotationSpeed: 0.007,
+                orbitSpeed: 0.0015,
+                angle: 0
+            },
+            {
+                name: "冥王星",
+                radius: 6,
+                orbitRadius: 640,
+                color: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"],
+                rotationSpeed: 0.012,
+                orbitSpeed: 0.001,
+                angle: 0
+            }
+        ];
+
+        // 创建离屏Canvas用于轨道线
+        const offscreenCanvas = document.createElement('canvas');
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+        offscreenCanvas.width = canvas.width;
+        offscreenCanvas.height = canvas.height;
+
+        // 绘制轨道线
+        function drawOrbits() {
+            offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+            offscreenCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            offscreenCtx.lineWidth = 1;
+            
+            celestialBodies.forEach(body => {
+                if (body.orbitRadius > 0) {
+                    offscreenCtx.beginPath();
+                    offscreenCtx.arc(
+                        canvas.width / 2,
+                        canvas.height / 2,
+                        body.orbitRadius,
+                        0,
+                        Math.PI * 2
+                    );
+                    offscreenCtx.stroke();
+                }
+            });
+        }
+        drawOrbits();
+
+        // 绘制星球
+        function drawPlanet(x, y, radius, colors) {
+            const gradient = ctx.createRadialGradient(
+                x, y, 0,
+                x, y, radius
+            );
+            
+            // 添加颜色渐变
+            gradient.addColorStop(0, colors[0]);
+            gradient.addColorStop(0.3, colors[1]);
+            gradient.addColorStop(0.7, colors[2]);
+            gradient.addColorStop(1, colors[3]);
+            
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+
+        // 绘制标签
+        function drawLabel(x, y, name) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // 计算文本宽度
+            const textWidth = ctx.measureText(name).width;
+            const padding = 5;
+            
+            // 绘制背景
+            ctx.beginPath();
+            ctx.roundRect(
+                x - textWidth/2 - padding,
+                y - 12/2 - padding,
+                textWidth + padding * 2,
+                12 + padding * 2,
+                5
+            );
+            ctx.fill();
+            
+            // 绘制文本
+            ctx.fillStyle = '#000';
+            ctx.fillText(name, x, y);
+            ctx.restore();
+        }
+
+        // 动画状态
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let earthDays = 0;
+        const earthDayCounter = 365 / (10 * 60 * 60 * 24); // 地球日计数比例
+
+        // 动画循环
+        function animate(currentTime) {
+            // 计算FPS
+            if (lastTime !== 0) {
+                const deltaTime = currentTime - lastTime;
+                frameCount++;
+                fps = 1000 / deltaTime;
+                
+                // 计算平均FPS
+                if (frameCount % 60 === 0) {
+                    avgFps = (avgFps * 59 + fps) / 60;
+                }
+                
+                // 计算地球日
+                earthDays += deltaTime * earthDayCounter;
+            }
+            lastTime = currentTime;
+
+            // 清除画布
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制轨道
+            ctx.drawImage(offscreenCanvas, 0, 0);
+            
+            // 更新并绘制天体
+            celestialBodies.forEach(body => {
+                // 更新角度
+                body.angle += body.orbitSpeed;
+                
+                // 计算位置
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const x = centerX + Math.cos(body.angle) * body.orbitRadius;
+                const y = centerY + Math.sin(body.angle) * body.orbitRadius;
+                
+                // 绘制星球
+                drawPlanet(x, y, body.radius, body.color);
+                
+                // 绘制标签
+                drawLabel(x, y, body.name);
+            });
+
+            // 更新统计信息
+            statsDiv.innerHTML = `
+                FPS: ${fps.toFixed(0)}<br>
+                AVG FPS: ${avgFps.toFixed(1)}<br>
+                Earth Day: ${earthDays.toFixed(1)}
+            `;
+
+            // 请求下一帧
+            requestAnimationFrame(animate);
+        }
+
+        // 开始动画
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

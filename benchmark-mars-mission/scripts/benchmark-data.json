@@ -423,5 +423,22 @@
         "point_12": 5,
         "point_13": 5,
         "Final-Score": 38
+    },
+    {
+        "LLM": "kimi-k1.5-long-thinking",
+        "point_1": 0,
+        "point_2": 5,
+        "point_3": 5,
+        "point_4": 3,
+        "point_5": 0,
+        "point_6": 0,
+        "point_7": 5,
+        "point_8": 5,
+        "point_9": 0,
+        "point_10": 0,
+        "point_11": 5,
+        "point_12": 3,
+        "point_13": 3,
+        "Final-Score": 34
     }
 ]

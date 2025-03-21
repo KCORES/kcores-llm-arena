@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII 风格 Mandelbrot Set</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+            font-family: monospace;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+            padding: 10px;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="stats">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>CURRENT FRAME: <span id="currentFrame">0</span>/200</div>
+    </div>
+    <canvas id="asciiCanvas"></canvas>
+
+    <script>
+        // 获取画布和上下文
+        const canvas = document.getElementById('asciiCanvas');
+        const ctx = canvas.getContext('2d');
+        const stats = {
+            fps: document.getElementById('fps'),
+            avgFps: document.getElementById('avgFps'),
+            currentFrame: document.getElementById('currentFrame')
+        };
+
+        // 设置画布为全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 李白《静夜思》去重并保留顺序，去掉标点
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const uniqueChars = [...new Set(poem)];
+        
+        // Mandelbrot Set 颜色集（由浅到深）
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', 
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa', 
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', 
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+        
+        // 计算 Mandelbrot 集合
+        function mandelbrot(x, y, maxIter) {
+            let zx = 0, zy = 0;
+            let iter = 0;
+            
+            while (zx * zx + zy * zy <= 4 && iter < maxIter) {
+                const temp = zx * zx - zy * zy + x;
+                zy = 2 * zx * zy + y;
+                zx = temp;
+                iter++;
+            }
+            
+            // 主心形和周期泡留空
+            if (zx * zx + zy * zy <= 4) {
+                return -1; // 属于 Mandelbrot 集合，留空
+            }
+            
+            return iter;
+        }
+
+        // 动画参数
+        let scale = 1.0;
+        const initialSize = 0.5; // 初始大小为屏幕的50%
+        const centerX = -0.5; // 中心在主心形和周期泡的交界处
+        const centerY = 0.0;
+        let frameCount = 0;
+        let avgFpsValues = [];
+        let lastTime = 0;
+        const fontMetrics = { size: 8, spacing: 8 };
+
+        // 设置字体
+        ctx.font = `${fontMetrics.size}px monospace`;
+        
+        // 计算字符密度
+        const charWidth = fontMetrics.spacing;
+        const charHeight = fontMetrics.spacing;
+        const cols = Math.floor(canvas.width / charWidth);
+        const rows = Math.floor(canvas.height / charHeight);
+        
+        // 创建字符缓冲区
+        const buffer = Array.from({ length: rows }, () => Array(cols).fill(' '));
+        
+        // Web Worker 处理 Mandelbrot 计算
+        const worker = new Worker(URL.createObjectURL(new Blob([`
+            self.onmessage = function(e) {
+                const { x, y, scale, centerX, centerY, maxIter, colors, uniqueChars } = e.data;
+                const width = e.data.width;
+                const height = e.data.height;
+                const charWidth = e.data.charWidth;
+                const charHeight = e.data.charHeight;
+                const cols = Math.floor(width / charWidth);
+                const rows = Math.floor(height / charHeight);
+                
+                const buffer = Array.from({ length: rows }, () => Array(cols).fill(' '));
+                
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        const cx = centerX + (col * charWidth - width / 2) * scale / width;
+                        const cy = centerY + (row * charHeight - height / 2) * scale / width;
+                        
+                        const iter = mandelbrot(cx, cy, maxIter);
+                        
+                        if (iter !== -1) {
+                            const colorIndex = Math.min(colors.length - 1, Math.floor((iter / maxIter) * colors.length));
+                            const charIndex = Math.floor((iter / maxIter) * uniqueChars.length) % uniqueChars.length;
+                            buffer[row][col] = {
+                                char: uniqueChars[charIndex],
+                                color: colors[colorIndex]
+                            };
+                        }
+                    }
+                }
+                
+                self.postMessage({ buffer });
+                
+                function mandelbrot(x, y, maxIter) {
+                    let zx = 0, zy = 0;
+                    let iter = 0;
+                    
+                    while (zx * zx + zy * zy <= 4 && iter < maxIter) {
+                        const temp = zx * zx - zy * zy + x;
+                        zy = 2 * zx * zy + y;
+                        zx = temp;
+                        iter++;
+                    }
+                    
+                    if (zx * zx + zy * zy <= 4) {
+                        return -1; // 属于 Mandelbrot 集合，留空
+                    }
+                    
+                    return iter;
+                }
+            };
+        `], { type: 'text/javascript' })));
+
+        worker.onmessage = function(e) {
+            const { buffer } = e.data;
+            
+            // 清空画布
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制字符
+            for (let row = 0; row < buffer.length; row++) {
+                for (let col = 0; col < buffer[row].length; col++) {
+                    const charData = buffer[row][col];
+                    if (charData.char !== ' ') {
+                        ctx.fillStyle = charData.color;
+                        ctx.fillText(charData.char, col * charWidth, row * charHeight + fontMetrics.size);
+                    }
+                }
+            }
+            
+            // 更新帧数
+            frameCount++;
+            stats.currentFrame.textContent = frameCount;
+            
+            // 计算FPS
+            const now = performance.now();
+            const fps = Math.round(1000 / (now - lastTime));
+            stats.fps.textContent = fps;
+            
+            // 记录平均FPS
+            avgFpsValues.push(fps);
+            if (avgFpsValues.length > 200) {
+                avgFpsValues.shift();
+            }
+            
+            // 如果达到200帧，重置动画
+            if (frameCount >= 200) {
+                frameCount = 0;
+                scale = initialSize;
+                stats.avgFps.textContent = Math.round(avgFpsValues.reduce((a, b) => a + b, 0) / avgFpsValues.length);
+                avgFpsValues = [];
+            } else {
+                // 继续放大
+                scale *= 1.005;
+                requestAnimationFrame(render);
+            }
+            
+            lastTime = now;
+        };
+
+        // 渲染函数
+        function render() {
+            worker.postMessage({
+                x: 0,
+                y: 0,
+                scale: scale,
+                centerX: centerX,
+                centerY: centerY,
+                maxIter: 100,
+                colors: colors,
+                uniqueChars: uniqueChars,
+                width: canvas.width,
+                height: canvas.height,
+                charWidth: charWidth,
+                charHeight: charHeight
+            });
+        }
+        
+        // 开始渲染
+        render();
+    </script>
+</body>
+</html>
