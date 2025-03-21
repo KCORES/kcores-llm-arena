@@ -526,6 +526,28 @@
         "point_17": 3,
         "point_18": 5,
         "Final-Score": 52
+    },
+    {
+        "LLM": "Doubao-1.5-pro-32k",
+        "point_1": 5,
+        "point_2": 5,
+        "point_3": 0,
+        "point_4": 0,
+        "point_5": 0,
+        "point_6": 5,
+        "point_7": 0,
+        "point_8": 0,
+        "point_9": 0,
+        "point_10": 3,
+        "point_11": 0,
+        "point_12": 0,
+        "point_13": 0,
+        "point_14": 0,
+        "point_15": 0,
+        "point_16": 0,
+        "point_17": 0,
+        "point_18": 0,
+        "Final-Score": 18
     }
 ]
 
