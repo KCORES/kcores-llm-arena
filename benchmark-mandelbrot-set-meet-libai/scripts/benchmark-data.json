@@ -502,6 +502,27 @@
         "point_16": 0,
         "point_17": 0,
         "Final-Score": 0
+    },
+    {
+        "LLM": "DeepSeek-V3-0324",
+        "point_1": 5,
+        "point_2": 5,
+        "point_3": 5,
+        "point_4": 5,
+        "point_5": 5,
+        "point_6": 0,
+        "point_7": 5,
+        "point_8": 5,
+        "point_9": 5,
+        "point_10": 5,
+        "point_11": 5,
+        "point_12": 5,
+        "point_13": 5,
+        "point_14": 3,
+        "point_15": 5,
+        "point_16": 5,
+        "point_17": 7,
+        "Final-Score": 80
     }
 ]
 

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>太阳系动画</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #fpsCounter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+            color: #000;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarSystem"></canvas>
+    <div id="fpsCounter">FPS: 0 | AVG FPS: 0 | Earth Day: 0</div>
+
+    <script>
+        // 主Canvas设置
+        const canvas = document.getElementById('solarSystem');
+        const ctx = canvas.getContext('2d');
+        const fpsCounter = document.getElementById('fpsCounter');
+
+        // 调整Canvas大小为全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 离屏Canvas用于轨道
+        const orbitCanvas = document.createElement('canvas');
+        const orbitCtx = orbitCanvas.getContext('2d');
+        orbitCanvas.width = canvas.width;
+        orbitCanvas.height = canvas.height;
+
+        // FPS计算
+        let lastTime = performance.now();
+        let fps = 0;
+        let frameCount = 0;
+        let lastFpsUpdate = 0;
+        let fpsValues = [];
+        const fpsUpdateInterval = 1000; // ms
+
+        // 时间计数器
+        let earthDayCount = 0;
+        const startTime = Date.now();
+
+        // 星球数据
+        const planets = [
+            { name: "Sun", radius: 30, distance: 0, speed: 0, colors: ["#f2831f", "#f15d22", "#d94125", "#a41d22"] },
+            { name: "Mercury", radius: 5, distance: 60, speed: 4.15, colors: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"] },
+            { name: "Venus", radius: 9, distance: 90, speed: 1.63, colors: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"] },
+            { name: "Earth", radius: 10, distance: 130, speed: 1, colors: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"] },
+            { name: "Mars", radius: 7, distance: 180, speed: 0.53, colors: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"] },
+            { name: "Jupiter", radius: 22, distance: 250, speed: 0.084, colors: ["#282411", "#c08137", "#bfb09c", "#a6705b"] },
+            { name: "Saturn", radius: 18, distance: 320, speed: 0.034, colors: ["#f3cf89", "#dab778", "#736b59", "#c1a480"] },
+            { name: "Uranus", radius: 14, distance: 380, speed: 0.012, colors: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"] },
+            { name: "Neptune", radius: 13, distance: 440, speed: 0.006, colors: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"] },
+            { name: "Pluto", radius: 3, distance: 490, speed: 0.004, colors: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"] }
+        ];
+
+        // 初始化星球位置
+        planets.forEach(planet => {
+            planet.angle = Math.random() * Math.PI * 2;
+            planet.x = 0;
+            planet.y = 0;
+        });
+
+        // 绘制轨道到离屏Canvas
+        function drawOrbits() {
+            orbitCanvas.width = canvas.width;
+            orbitCanvas.height = canvas.height;
+
+            orbitCtx.clearRect(0, 0, orbitCanvas.width, orbitCanvas.height);
+            orbitCtx.save();
+            orbitCtx.translate(canvas.width / 2, canvas.height / 2);
+
+            for (let i = 1; i < planets.length; i++) {
+                const planet = planets[i];
+                orbitCtx.beginPath();
+                orbitCtx.arc(0, 0, planet.distance, 0, Math.PI * 2);
+                orbitCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                orbitCtx.lineWidth = 1;
+                orbitCtx.stroke();
+            }
+
+            orbitCtx.restore();
+        }
+
+        // 绘制星球
+        function drawPlanets() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制轨道
+            ctx.drawImage(orbitCanvas, 0, 0);
+
+            // 设置中心点
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // 更新和绘制星球
+            for (let i = 0; i < planets.length; i++) {
+                const planet = planets[i];
+
+                // 更新位置
+                if (i > 0) { // 不是太阳
+                    planet.angle += (planet.speed * 10) / 365 * 0.01;
+                    if (planet.angle > Math.PI * 2) {
+                        planet.angle -= Math.PI * 2;
+                    }
+
+                    planet.x = centerX + Math.cos(planet.angle) * planet.distance;
+                    planet.y = centerY + Math.sin(planet.angle) * planet.distance;
+                } else { // 太阳
+                    planet.x = centerX;
+                    planet.y = centerY;
+                }
+
+                // 绘制星球
+                drawPlanet(planet);
+
+                // 绘制标签
+                drawLabel(planet);
+            }
+        }
+
+        // 绘制单个星球
+        function drawPlanet(planet) {
+            ctx.save();
+            ctx.translate(planet.x, planet.y);
+
+            // 创建径向渐变
+            const gradient = ctx.createRadialGradient(
+                0, 0, planet.radius * 0.3,
+                0, 0, planet.radius
+            );
+
+            // 添加颜色停止点
+            for (let i = 0; i < planet.colors.length; i++) {
+                gradient.addColorStop(i / (planet.colors.length - 1), planet.colors[i]);
+            }
+
+            // 绘制圆形
+            ctx.beginPath();
+            ctx.arc(0, 0, planet.radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // 如果是土星，添加环
+            if (planet.name === "Saturn") {
+                ctx.beginPath();
+                ctx.ellipse(0, 0, planet.radius * 1.5, planet.radius * 0.3, 0, 0, Math.PI * 2);
+                ctx.strokeStyle = '#e5d5a6';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        // 绘制标签
+        function drawLabel(planet) {
+            ctx.save();
+            ctx.translate(planet.x, planet.y);
+
+            // 计算标签位置（在星球上方）
+            const labelX = 0;
+            const labelY = -planet.radius - 15;
+
+            // 绘制背景
+            const textWidth = ctx.measureText(`[${planet.name}]`).width;
+            ctx.beginPath();
+            ctx.roundRect(labelX - textWidth / 2 - 5, labelY - 12, textWidth + 10, 20, 10);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fill();
+
+            // 绘制文本
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`[${planet.name}]`, labelX, labelY);
+
+            ctx.restore();
+        }
+
+        // 动画循环
+        function animate(currentTime) {
+            // 计算FPS
+            frameCount++;
+            const deltaTime = currentTime - lastTime;
+
+            if (currentTime - lastFpsUpdate >= fpsUpdateInterval) {
+                fps = Math.round((frameCount * 1000) / (currentTime - lastFpsUpdate));
+                fpsValues.push(fps);
+                if (fpsValues.length > 60) fpsValues.shift();
+
+                const avgFps = Math.round(fpsValues.reduce((a, b) => a + b, 0) / fpsValues.length);
+
+                // 计算地球日
+                const elapsedSeconds = (Date.now() - startTime) / 1000;
+                earthDayCount = Math.floor(elapsedSeconds * 10);
+
+                // 更新FPS显示
+                fpsCounter.textContent = `FPS: ${fps} | AVG FPS: ${avgFps} | Earth Day: ${earthDayCount}`;
+
+                lastFpsUpdate = currentTime;
+                frameCount = 0;
+            }
+
+            // 更新和绘制
+            drawPlanets();
+
+            lastTime = currentTime;
+            requestAnimationFrame(animate);
+        }
+
+        // 初始化
+        drawOrbits();
+        window.addEventListener('resize', drawOrbits);
+
+        // 开始动画
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>
