@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set Animation with 静夜思</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+            font-family: monospace;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: black;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="asciiCanvas"></canvas>
+    <div class="info-panel">
+        <div class="info-item">FPS: <span id="fps">0</span></div>
+        <div class="info-item">AVG FPS: <span id="avgFps">0</span></div>
+        <div class="info-item">CURRENT FRAME: <span id="currentFrame">0/200</span></div>
+    </div>
+
+    <script>
+        // 静夜思 - 李白
+        const POEM = `
+床前明月光，
+疑是地上霜。
+举头望明月，
+低头思故乡。
+        `.trim();
+
+        // 去重并保留顺序，去掉标点
+        const uniqueChars = Array.from(new Set(POEM.replace(/[，。！？、]/g, ''))).join('');
+        const chars = uniqueChars.split('');
+
+        // 颜色列表（由浅到深）
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', 
+            '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', 
+            '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', 
+            '#17184b', '#0f2350'
+        ];
+
+        // 获取Canvas和上下文
+        const canvas = document.getElementById('asciiCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 设置Canvas为全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 字体设置
+        const fontSize = 8;
+        ctx.font = `${fontSize}px monospace`;
+        ctx.textBaseline = 'top';
+
+        // Mandelbrot计算参数
+        let scale = 1.0;
+        let offsetX = 0;
+        let offsetY = 0;
+        let frameCount = 0;
+        let totalFrames = 200;
+        let zoomSpeed = 0.005; // 每帧放大0.5%
+        let maxIterations = 50;
+
+        // 性能统计
+        let frameTimes = [];
+        let lastTime = 0;
+        let avgFps = 0;
+
+        // Mandelbrot集计算
+        function mandelbrot(x, y, scale, offsetX, offsetY, maxIterations) {
+            const zx = (x - canvas.width / 2) * scale / (canvas.width / 2) + offsetX;
+            const zy = (y - canvas.height / 2) * scale / (canvas.height / 2) + offsetY;
+            
+            let iter = 0;
+            let cx = zx;
+            let cy = zy;
+            
+            while (iter < maxIterations && (cx * cx + cy * cy) < 4) {
+                const temp = cx * cx - cy * cy + zx;
+                cy = 2 * cx * cy + zy;
+                cx = temp;
+                iter++;
+            }
+            
+            // 检查是否在Main cardioid或period bulbs区域
+            const inCardioid = (zx, zy) => {
+                const q = (zx - 0.25) * (zx - 0.25) + zy * zy;
+                return q * (q + (zx - 0.25)) <= 0.25 * zy * zy;
+            };
+            
+            const inBulb = (zx, zy, x0, y0, r) => {
+                const dx = zx - x0;
+                const dy = zy - y0;
+                return dx * dx + dy * dy < r * r;
+            };
+            
+            // 检查是否在空心区域
+            if (inCardioid(zx, zy) || 
+                inBulb(zx, zy, -1.0, 0.0, 0.08) || 
+                inBulb(zx, zy, -1.309, 0.189, 0.055) || 
+                inBulb(zx, zy, -1.544, -0.080, 0.040)) {
+                return -1; // 空心区域
+            }
+            
+            return iter;
+        }
+
+        // 渲染帧
+        function renderFrame() {
+            const startTime = performance.now();
+            
+            // 计算当前缩放和偏移
+            const initialScale = 2.5;
+            scale = initialScale * Math.pow(1 + zoomSpeed, frameCount);
+            
+            // 计算偏移以保持中心在Main cardioid交界处
+            offsetX = -0.5;
+            offsetY = 0;
+            
+            // 清空画布
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 遍历每个像素
+            for (let y = 0; y < canvas.height; y += fontSize) {
+                for (let x = 0; x < canvas.width; x += fontSize) {
+                    const iterations = mandelbrot(x, y, scale, offsetX, offsetY, maxIterations);
+                    
+                    if (iterations === -1) {
+                        // 空心区域，不绘制
+                        continue;
+                    }
+                    
+                    if (iterations < maxIterations) {
+                        // 根据迭代次数选择颜色和字符
+                        const colorIndex = Math.floor((1 - iterations / maxIterations) * colors.length);
+                        const color = colors[colorIndex];
+                        const char = chars[iterations % chars.length];
+                        
+                        ctx.fillStyle = color;
+                        ctx.fillText(char, x, y);
+                    }
+                }
+            }
+            
+            // 更新帧计数
+            frameCount++;
+            if (frameCount >= totalFrames) {
+                frameCount = 0;
+            }
+            
+            // 更新UI
+            document.getElementById('currentFrame').textContent = `${frameCount}/${totalFrames}`;
+            
+            // 计算FPS
+            const endTime = performance.now();
+            const frameTime = endTime - startTime;
+            frameTimes.push(frameTime);
+            if (frameTimes.length > 60) frameTimes.shift();
+            
+            const avgFrameTime = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+            const currentFps = Math.round(1000 / frameTime);
+            avgFps = Math.round(1000 / avgFrameTime);
+            
+            document.getElementById('fps').textContent = currentFps;
+            document.getElementById('avgFps').textContent = avgFps;
+            
+            // 下一帧
+            requestAnimationFrame(renderFrame);
+        }
+
+        // 开始动画
+        requestAnimationFrame(renderFrame);
+    </script>
+</body>
+</html>

@@ -108,6 +108,9 @@ Write a Python program that shows 20 balls bouncing inside a spinning heptagon:
 | ERNIE-X1                                     | 5 | 5 | 0 (只有3个小球) | 5 |3 (只有3个小球) | 5 | 3 (使用部分颜色) | 5 | 0 (无摩擦) | 5 | 3 (弹力过大) | 0 (无旋转) | 5 | 0 (小球几次碰撞后7边形内只剩下一个小球) | 0 (文字不旋转) | 0 (7边形有一条边不显示，但碰撞正常生效) | 3 (7边形旋转略慢) | 5 | 49 |
 | DeepSeek-V3-0324                             | 5        | 5        | 5        | 5         | 5       | 5        | 5        | 5        | 5                              | 5                | 5                  | 5                | 5                    | 0 (小球掉出了七边形)                      | 5                      | 5                      | 5                             | 5         | 85           |
 | Gemini-2.5-Pro-Experimental-03-25            | 5        | 5        | 5        | 5         | 5       | 5        | 5        | 5        | 3 (摩擦旋转过快)                  | 5                | 5                  | 5                | 5                    | 5                      | 5                      | 5                      | 5                            | 5         | 88           |
+| Doubao-1.5-pro-32k | 5 | 5 | 0 (只有一个小球) | 0 | 0 | 5 (初始从中间掉落) | 0 | 0 | 0 | 3 (有重力) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 18 |
+| kimi-k1.5-long-thinking | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 5 | 0 (没有摩擦) | 0 (重力错误) | 3 (弹性太小) | 0 (数字不旋转) | 5 | 5 | 0 (数字不旋转) | 5 | 3 (七边形旋转过慢) | 5 | 66 |
+
 
 
 
@@ -123,7 +126,7 @@ Write a Python program that shows 20 balls bouncing inside a spinning heptagon:
 
 ![](./assets/images/gpt-4.5-high-score.png)
 
-**Claude-3.7-Sonnet** 和 **DeepSeek-R1** 则因为多引用了 random 库扣了2分, Gemini-2.5-Pro-Experimental-03-25 则因旋转速度过快 扣了2分, 这些模型并列第二名
+**Claude-3.7-Sonnet** 和 **DeepSeek-R1** 则因为多引用了 random 库扣了2分, **Gemini-2.5-Pro-Experimental-03-25** 则因旋转速度过快 扣了2分, 这些模型并列第二名
 
 **deepseek-r1**  
 ![](./assets/images/deepseek-r1-high-score.png)
@@ -132,7 +135,7 @@ Write a Python program that shows 20 balls bouncing inside a spinning heptagon:
 ![](./assets/images/claude-3.7-sonnet-high-score.png)
 
 **Gemini-2.5-Pro-Experimental-03-25**  
-![](./assets/images/Gemini-2.5-Pro-Experimental-03-25.png)
+![](./assets/images/Gemini-2.5-Pro-Experimental-03-25-high-score.png)
 
 ## Winner
 
