@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #tooltip {
+            position: absolute;
+            display: none;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px;
+            border-radius: 3px;
+            font-family: sans-serif;
+            font-size: 12px;
+            pointer-events: none;
+            /* Allow clicking through the tooltip */
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarSystemCanvas"></canvas>
+    <div id="tooltip"></div>
+
+    <!-- Web Worker Script -->
+    <script id="worker-script" type="text/worker">
+        // Worker script for calculating planet positions
+        let planetsData = [];
+        const TWO_PI = 2 * Math.PI;
+
+        self.onmessage = function(e) {
+            const { type, payload } = e.data;
+
+            if (type === 'init') {
+                planetsData = payload.planets.map(p => ({
+                    orbitRadius: p.orbitRadius,
+                    orbitalPeriodDays: p.orbitalPeriodDays,
+                    // Store scaled orbit radius for direct use
+                    scaledOrbitRadius: p.orbitRadius * payload.scaleFactor
+                }));
+            } else if (type === 'update') {
+                const { elapsedEarthDays, centerX, centerY, scaleFactor } = payload;
+                const positions = planetsData.map((planetData, index) => {
+                    if (planetData.orbitRadius === 0) { // Sun
+                        return { x: centerX, y: centerY };
+                    }
+                    // Recalculate scaled radius if scaleFactor changes (e.g., on resize)
+                    // It's more efficient to pass the already scaled center and scale factor though
+                    const currentScaledOrbitRadius = planetData.orbitRadius * scaleFactor;
+                    const angle = (TWO_PI * elapsedEarthDays) / planetData.orbitalPeriodDays;
+                    const x = centerX + currentScaledOrbitRadius * Math.cos(angle);
+                    const y = centerY + currentScaledOrbitRadius * Math.sin(angle);
+                    return { x, y };
+                });
+                self.postMessage({ type: 'positions', positions });
+            } else if (type === 'updateScale') {
+                 planetsData = planetsData.map((p, i) => ({
+                    ...p,
+                    scaledOrbitRadius: payload.planets[i].orbitRadius * payload.scaleFactor
+                 }));
+                 // Optional: Immediately recalculate positions based on new scale and last known time
+                 // This might be complex if elapsedEarthDays isn't stored here.
+                 // It's often simpler to let the main thread request a new update.
+            }
+        };
+    </script>
+
+    <script>
+        const canvas = document.getElementById('solarSystemCanvas');
+        const ctx = canvas.getContext('2d');
+        const tooltip = document.getElementById('tooltip');
+
+        let width, height, centerX, centerY;
+        let scaleFactor; // Used to scale orbits and sizes based on screen size
+
+        // --- Configuration ---
+        const TIME_COMPRESSION = 10; // 1 second = 10 Earth days
+        const ORBIT_COLOR = 'rgba(255, 255, 255, 0.2)';
+        const LABEL_COLOR = 'white';
+        const LABEL_FONT = '12px Arial';
+        const COUNTER_BG_COLOR = 'rgba(255, 255, 255, 0.7)';
+        const COUNTER_TEXT_COLOR = 'black';
+        const COUNTER_FONT = '14px Arial';
+        const PIXEL_PATTERN_SIZE = 8; // Size of the canvas used to generate planet patterns
+
+        // --- Planet Data ---
+        // Radii are relative, Orbit radius increases
+        const planets = [
+            { name: "太阳", colors: ["#f2831f", "#f15d22", "#d94125", "#a41d22"], relativeRadius: 35, orbitRadius: 0, orbitalPeriodDays: 0 },
+            { name: "水星", colors: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"], relativeRadius: 3, orbitRadius: 50, orbitalPeriodDays: 88 },
+            { name: "金星", colors: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"], relativeRadius: 6, orbitRadius: 80, orbitalPeriodDays: 225 },
+            { name: "地球", colors: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"], relativeRadius: 7, orbitRadius: 115, orbitalPeriodDays: 365.25 },
+            { name: "火星", colors: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"], relativeRadius: 5, orbitRadius: 160, orbitalPeriodDays: 687 },
+            { name: "木星", colors: ["#282411", "#c08137", "#bfb09c", "#a6705b"], relativeRadius: 20, orbitRadius: 250, orbitalPeriodDays: 4333 },
+            { name: "土星", colors: ["#f3cf89", "#dab778", "#736b59", "#c1a480"], relativeRadius: 17, orbitRadius: 350, orbitalPeriodDays: 10759 },
+            { name: "天王星", colors: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"], relativeRadius: 13, orbitRadius: 450, orbitalPeriodDays: 30687 },
+            { name: "海王星", colors: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"], relativeRadius: 12, orbitRadius: 550, orbitalPeriodDays: 60190 },
+            { name: "冥王星", colors: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"], relativeRadius: 2, orbitRadius: 650, orbitalPeriodDays: 90560 } // Yes, Pluto!
+        ];
+
+        // --- State Variables ---
+        let lastTimestamp = 0;
+        let elapsedEarthDays = 0;
+        let animationFrameId;
+        let planetPositions = planets.map(() => ({ x: 0, y: 0 })); // Initial positions array
+        let planetPatterns = []; // Store pre-rendered patterns
+
+        // FPS Counter variables
+        let frameCount = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let lastFpsUpdate = 0;
+        let totalFrames = 0;
+        let startTime = 0;
+
+        // --- Off-screen Canvas for Orbits ---
+        const orbitCanvas = document.createElement('canvas');
+        const orbitCtx = orbitCanvas.getContext('2d');
+
+        // --- Web Worker ---
+        let worker = null;
+        function initializeWorker() {
+            try {
+                const workerScriptElement = document.getElementById('worker-script');
+                if (!workerScriptElement) throw new Error("Worker script element not found");
+                const workerCode = workerScriptElement.textContent;
+                const blob = new Blob([workerCode], { type: 'application/javascript' });
+                const workerUrl = URL.createObjectURL(blob);
+                worker = new Worker(workerUrl);
+
+                worker.onmessage = function (e) {
+                    if (e.data.type === 'positions') {
+                        planetPositions = e.data.positions;
+                        // Ensure planetPositions array always has the correct length
+                        if (planetPositions.length !== planets.length) {
+                            console.warn("Worker returned incorrect number of positions. Re-initializing.");
+                            // Basic fallback - center everything temporarily
+                            planetPositions = planets.map(() => ({ x: centerX, y: centerY }));
+                            // Optionally re-send init data
+                            // worker.postMessage({ type: 'init', payload: { planets: planets, scaleFactor: scaleFactor } });
+                        }
+                    }
+                };
+
+                worker.onerror = function (error) {
+                    console.error("Worker Error:", error.message, error);
+                    // Fallback mechanism if worker fails
+                    worker = null; // Disable worker
+                    console.warn("Web Worker failed. Falling back to main thread calculation.");
+                };
+
+                // Initial data for the worker
+                worker.postMessage({ type: 'init', payload: { planets: planets, scaleFactor: scaleFactor } });
+
+                URL.revokeObjectURL(workerUrl); // Clean up the object URL
+
+            } catch (error) {
+                console.error("Failed to initialize Web Worker:", error);
+                worker = null; // Ensure worker is null if initialization fails
+            }
+        }
+
+        // --- Drawing Functions ---
+
+        // Creates a pixelated pattern for a planet
+        function createPlanetPattern(colors) {
+            const patternCanvas = document.createElement('canvas');
+            patternCanvas.width = PIXEL_PATTERN_SIZE;
+            patternCanvas.height = PIXEL_PATTERN_SIZE;
+            const pCtx = patternCanvas.getContext('2d');
+            const pixelSize = 1; // Draw 1x1 pixel rectangles
+
+            for (let y = 0; y < PIXEL_PATTERN_SIZE; y += pixelSize) {
+                for (let x = 0; x < PIXEL_PATTERN_SIZE; x += pixelSize) {
+                    pCtx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                    pCtx.fillRect(x, y, pixelSize, pixelSize);
+                }
+            }
+            return ctx.createPattern(patternCanvas, 'repeat');
+        }
+
+        // Pre-render all planet patterns
+        function initializePlanetPatterns() {
+            planetPatterns = planets.map(planet => createPlanetPattern(planet.colors));
+        }
+
+        // Draw all orbits onto the off-screen canvas
+        function drawOrbits() {
+            orbitCanvas.width = width;
+            orbitCanvas.height = height;
+            orbitCtx.clearRect(0, 0, width, height);
+            orbitCtx.strokeStyle = ORBIT_COLOR;
+            orbitCtx.lineWidth = 1;
+
+            planets.forEach(planet => {
+                if (planet.orbitRadius > 0) {
+                    orbitCtx.beginPath();
+                    orbitCtx.arc(centerX, centerY, planet.orbitRadius * scaleFactor, 0, Math.PI * 2);
+                    orbitCtx.stroke();
+                }
+            });
+        }
+
+        // Draw a single planet
+        function drawPlanet(planet, index, pattern, position) {
+            // Use calculated position if available, otherwise default to center (esp. during init)
+            const x = position ? position.x : centerX;
+            const y = position ? position.y : centerY;
+            const radius = planet.relativeRadius * Math.min(1, scaleFactor * 0.5); // Scale radius slightly, capped
+
+            ctx.fillStyle = pattern;
+            ctx.beginPath();
+            ctx.arc(x, y, Math.max(1, radius), 0, Math.PI * 2); // Ensure radius is at least 1
+            ctx.fill();
+
+            // Special case for Saturn's rings
+            if (planet.name === "土星") {
+                drawSaturnRings(x, y, radius);
+            }
+        }
+
+        // Draw Saturn's rings
+        function drawSaturnRings(x, y, planetRadius) {
+            const ringOuterRadius = planetRadius * 2.2;
+            const ringInnerRadius = planetRadius * 1.5;
+            const tilt = 0.3; // Radians to tilt the rings
+
+            ctx.strokeStyle = 'rgba(218, 183, 120, 0.7)'; // Ring color
+            ctx.lineWidth = Math.max(1, planetRadius * 0.3); // Ring thickness based on planet size
+
+            ctx.beginPath();
+            ctx.ellipse(x, y, ringOuterRadius, ringOuterRadius * tilt, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Optionally add a gap by drawing a slightly smaller ellipse with background color,
+            // but a simpler single stroke is often sufficient for this style.
+            // ctx.strokeStyle = 'rgba(218, 183, 120, 0.5)';
+            // ctx.lineWidth = Math.max(1, planetRadius * 0.15);
+            // ctx.beginPath();
+            // ctx.ellipse(x, y, ringInnerRadius + (ringOuterRadius - ringInnerRadius)/2, (ringInnerRadius + (ringOuterRadius - ringInnerRadius)/2) * tilt, 0, 0, Math.PI * 2);
+            // ctx.stroke();
+        }
+
+
+        // Draw a planet's label
+        function drawLabel(planet, position) {
+            const x = position ? position.x : centerX;
+            const y = position ? position.y : centerY;
+            const radius = planet.relativeRadius * Math.min(1, scaleFactor * 0.5);
+            const labelOffset = radius + 5; // Position label slightly above the planet
+
+            ctx.fillStyle = LABEL_COLOR;
+            ctx.font = LABEL_FONT;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(planet.name, x, y - labelOffset);
+        }
+
+        // Draw FPS and Day Counter
+        function drawCounter() {
+            const textFPS = `FPS: ${fps}`;
+            const textAvgFPS = `AVG FPS: ${avgFps.toFixed(1)}`;
+            const textDays = `地球日: ${Math.floor(elapsedEarthDays)}`;
+            const padding = 8;
+            const lineHeight = 18; // Approximate height based on font size
+            const boxWidth = 140; // Adjust as needed
+            const boxHeight = lineHeight * 3 + padding * 2;
+            const borderRadius = 5;
+
+            // Background
+            ctx.fillStyle = COUNTER_BG_COLOR;
+            ctx.beginPath();
+            ctx.moveTo(padding + borderRadius, padding);
+            ctx.lineTo(padding + boxWidth - borderRadius, padding);
+            ctx.arcTo(padding + boxWidth, padding, padding + boxWidth, padding + borderRadius, borderRadius);
+            ctx.lineTo(padding + boxWidth, padding + boxHeight - borderRadius);
+            ctx.arcTo(padding + boxWidth, padding + boxHeight, padding + boxWidth - borderRadius, padding + boxHeight, borderRadius);
+            ctx.lineTo(padding + borderRadius, padding + boxHeight);
+            ctx.arcTo(padding, padding + boxHeight, padding, padding + boxHeight - borderRadius, borderRadius);
+            ctx.lineTo(padding, padding + borderRadius);
+            ctx.arcTo(padding, padding, padding + borderRadius, padding, borderRadius);
+            ctx.closePath();
+            ctx.fill();
+
+
+            // Text
+            ctx.fillStyle = COUNTER_TEXT_COLOR;
+            ctx.font = COUNTER_FONT;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText(textFPS, padding * 2, padding * 2);
+            ctx.fillText(textAvgFPS, padding * 2, padding * 2 + lineHeight);
+            ctx.fillText(textDays, padding * 2, padding * 2 + lineHeight * 2);
+        }
+
+        // --- Main Animation Loop ---
+        function animate(timestamp) {
+            if (!startTime) {
+                startTime = timestamp;
+                lastTimestamp = timestamp;
+                lastFpsUpdate = timestamp;
+            }
+
+            const deltaTime = (timestamp - lastTimestamp) / 1000; // Delta time in seconds
+            lastTimestamp = timestamp;
+
+            // Update elapsed time
+            elapsedEarthDays += deltaTime * TIME_COMPRESSION;
+
+            // Update FPS counters
+            frameCount++;
+            totalFrames++;
+            const timeSinceLastUpdate = timestamp - lastFpsUpdate;
+            if (timeSinceLastUpdate >= 1000) { // Update FPS every second
+                fps = Math.round((frameCount * 1000) / timeSinceLastUpdate);
+                frameCount = 0;
+                lastFpsUpdate = timestamp;
+            }
+            avgFps = totalFrames / ((timestamp - startTime) / 1000);
+
+
+            // Request position updates from worker or calculate on main thread
+            if (worker) {
+                worker.postMessage({
+                    type: 'update',
+                    payload: {
+                        elapsedEarthDays: elapsedEarthDays,
+                        centerX: centerX,
+                        centerY: centerY,
+                        scaleFactor: scaleFactor
+                    }
+                });
+            } else {
+                // Fallback: Calculate positions on the main thread if worker failed
+                const TWO_PI = 2 * Math.PI;
+                planetPositions = planets.map(planet => {
+                    if (planet.orbitRadius === 0) { // Sun
+                        return { x: centerX, y: centerY };
+                    }
+                    const angle = (TWO_PI * elapsedEarthDays) / planet.orbitalPeriodDays;
+                    const x = centerX + planet.orbitRadius * scaleFactor * Math.cos(angle);
+                    const y = centerY + planet.orbitRadius * scaleFactor * Math.sin(angle);
+                    return { x, y };
+                });
+            }
+
+
+            // --- Drawing ---
+            // Clear main canvas
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw orbits from off-screen canvas
+            ctx.drawImage(orbitCanvas, 0, 0);
+
+            // Draw planets and labels using potentially updated positions
+            // Check if planetPositions has been populated by the worker (or fallback)
+            if (planetPositions && planetPositions.length === planets.length) {
+                planets.forEach((planet, index) => {
+                    // Ensure pattern exists before drawing
+                    if (planetPatterns[index]) {
+                        drawPlanet(planet, index, planetPatterns[index], planetPositions[index]);
+                    }
+                });
+
+                // Draw labels after all planets are drawn (prevents overlap issues)
+                planets.forEach((planet, index) => {
+                    drawLabel(planet, planetPositions[index]);
+                });
+            } else {
+                // Draw planets at center if positions aren't ready yet (initial frame maybe)
+                planets.forEach((planet, index) => {
+                    if (planetPatterns[index]) {
+                        drawPlanet(planet, index, planetPatterns[index], { x: centerX, y: centerY });
+                    }
+                });
+                // Optionally draw labels at center too, or skip labels until positions are valid
+            }
+
+            // Draw FPS/Day counter
+            drawCounter();
+
+            // Request next frame
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        // --- Initialization and Resize ---
+        function setup() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            centerX = width / 2;
+            centerY = height / 2;
+
+            // Determine scale factor based on the largest orbit fitting reasonably
+            const largestOrbit = planets[planets.length - 1].orbitRadius;
+            // Fit largest orbit within ~90% of the smallest screen dimension
+            scaleFactor = (Math.min(width, height) * 0.9) / (largestOrbit * 2);
+
+            // Update worker with new scale factor if it exists
+            if (worker) {
+                worker.postMessage({ type: 'updateScale', payload: { planets: planets, scaleFactor: scaleFactor } });
+            }
+
+            // Recalculate initial positions based on new center and scale for the first frame
+            // Or rely on the worker/fallback calculation in the first animate() call.
+            // For simplicity, we'll let the first animate call handle it.
+
+            // Re-draw static orbits
+            drawOrbits();
+        }
+
+        function init() {
+            console.log("Initializing Solar System...");
+            initializePlanetPatterns(); // Create patterns first
+            setup(); // Initial setup for size, scale, orbits
+            window.addEventListener('resize', setup); // Add resize listener
+
+            // Initialize the worker *after* initial scaleFactor is calculated
+            initializeWorker();
+
+            // Ensure initial planet positions are set before first draw if worker is slow
+            // Calculate initial positions (t=0) on main thread for immediate drawing
+            const TWO_PI = 2 * Math.PI;
+            planetPositions = planets.map(planet => {
+                if (planet.orbitRadius === 0) return { x: centerX, y: centerY };
+                const angle = 0; // Start all at angle 0
+                const x = centerX + planet.orbitRadius * scaleFactor * Math.cos(angle);
+                const y = centerY + planet.orbitRadius * scaleFactor * Math.sin(angle);
+                return { x, y };
+            });
+
+
+            console.log("Starting animation...");
+            // Reset time and start animation loop
+            startTime = 0;
+            lastTimestamp = 0;
+            elapsedEarthDays = 0;
+            totalFrames = 0;
+            frameCount = 0;
+            lastFpsUpdate = 0;
+            fps = 0;
+            avgFps = 0;
+
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId); // Cancel previous loop if re-initializing
+            }
+            animate(performance.now()); // Start the loop
+        }
+
+        // --- Start ---
+        init();
+
+    </script>
+</body>
+
+</html>

@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 parser = argparse.ArgumentParser(description="Render LLM benchmark chart")
 
 # Add custom font
-font_path = "../assets/fonts/sarasa-mono-sc-regular.ttf"
+font_path = "./assets/fonts/sarasa-mono-sc-regular.ttf"
 font_manager.fontManager.addfont(font_path)
 plt.rcParams["font.family"] = "Sarasa Mono SC"
 

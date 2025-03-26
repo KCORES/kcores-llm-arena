@@ -423,6 +423,23 @@
         "point_12": 5,
         "point_13": 5,
         "Final-Score": 47
+    },
+    {
+        "LLM": "Gemini-2.5-Pro-Experimental-03-25",
+        "point_1": 5,
+        "point_2": 5,
+        "point_3": 5,
+        "point_4": 5,
+        "point_5": 5,
+        "point_6": 5,
+        "point_7": 5,
+        "point_8": 5,
+        "point_9": 5,
+        "point_10": 0,
+        "point_11": 5,
+        "point_12": 5,
+        "point_13": 5,
+        "Final-Score": 60
     }
 ]
 
