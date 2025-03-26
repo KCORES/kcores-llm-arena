@@ -5,7 +5,29 @@ Mars Mission Animation 测试
 
 ## Desc
 
-使用 Grok-3 发布时的demo Prompt 对流行的前沿大模型进行测试.
+使用 Grok-3 发布时的 demo Prompt 对流行的前沿大模型进行测试.
+
+### 该项目主要测试
+
+- 需求还原
+  - 展示各个行星
+  - 动画效果展示公转
+  - 展示轨迹
+- 需求补全
+  - 补全演示中缺失的坐标系与图例
+  - 渲染太阳
+- 计算
+  - 圆周轨道与运行周期
+  - 飞船的飞行轨迹
+  - 飞船准确降落行星
+- 物理
+  - 天体运行轨道半径
+  - 天体运行周期
+  - 飞行器发射窗口与返回窗口
+- 编程语言
+  -Python
+- Prompt 语言
+  - 英文
 
 ## 测试 Prompt
 
@@ -77,29 +99,35 @@ Generate code for an animated 3d plot of a launch from earth landing on mars and
 
 ![Mars Mission Animation Benchmark](./scripts/llm_benchmark_results.png)
 
-## 结论
-
-本测试难度还是非常大的, 其中 Grok-3 发布会上的 demo 视频看上去很唬人, 但实际使用相同的 prompt 测试, 很难复现一致的效果. 但即使是这样, Grok-3-Reasoning 仍然很强.
-
-Grok-3-Reasoning 在搜索的加持下, 表现非常亮眼, 得分很高, 需求完成很好, 轨道周期计算很准确, 但动画计算还是出现了问题, 有抖动, 并不能完整表现飞船的着陆.
-
-![Grok-3-Reasoning](./assets/Grok-3-mars-mission-Reasoning-anime-demo.png)
-
-
-OpenAI-o1, 飞船轨道计算得很好所以得分很高.
-
-![OpenAI-o1](./assets/OpenAI-o1-mars-mission-anime-demo.png)
-
-Claude-3.5-sonnet 表现始终稳定, 处于第三名, 比较亮眼的是火星运行轨道表现得很不错, 但是卫星发射窗口没有计算在内.
-
-![OpenAI-o1](./assets/Claude-3.5-Sonnet-mars-mission-anime-demo.png)
-
-而 Grok-3 的样式, 图形渲染上的确很强, 但细看卫星轨道其实是不正确的, 尤其动画计算出现了问题, 有抖动, 并不能完整表现飞船的着陆, 如果这个表现得好将会是最完美的第一名.
-
-![Grok-3](./assets/Grok-3-mars-mission-anime-demo.png)
-
-
-
 ## Winner
 
-**👑Grok-3-Reasoning**
+**👑Gemini-2.5-Pro-Experimental-03-25**
+
+## 结论
+
+本测试难度还是非常大的, 其中 Grok-3 发布会上的 demo 视频看上去很唬人, 但实际使用相同的 prompt 测试, 很难复现一致的效果.
+
+而 **Gemini-2.5-Pro-Experimental-03-25** 则惊人的完成了这一项目, 连最难的发射周期和返回窗口都计算正确.
+
+目前第一名是 **Gemini-2.5-Pro-Experimental-03-25**
+
+![Gemini-2.5-Pro-Experimental-03-25](./assets/images/Gemini-2.5-Pro-Experimental-03-25-high-score.png)
+
+
+Grok-3-Reasoning 为第二名, 在搜索的加持下, 表现非常亮眼, 得分很高, 需求完成很好, 轨道周期计算很准确, 但动画计算还是出现了问题, 有抖动, 并不能完整表现飞船的着陆. 
+
+![Grok-3-Reasoning](./assets/images/Grok-3-mars-mission-Reasoning-anime-demo.png)
+
+
+OpenAI-o1, 为第三名, 飞船轨道计算得很好所以得分很高.
+
+![OpenAI-o1](./assets/images/OpenAI-o1-mars-mission-anime-demo.png)
+
+Claude-3.5-sonnet 表现始终稳定, 处于并列第三名, 比较亮眼的是火星运行轨道表现得很不错, 但是卫星发射窗口没有计算在内.
+
+![Claude-3.5-sonnet](./assets/images/Claude-3.5-Sonnet-mars-mission-anime-demo.png)
+
+
+
+
+

@@ -5,7 +5,24 @@ Ball Bouncing Inside Spinning Heptagon 测试
 
 ## Desc
 
+### 该项目主要测试
 
+- 需求还原
+  - 展示7边形旋转
+  - 展示20个小球的物理运动
+  - 展示小球上面的数字
+  - 小球大小一致
+- 计算
+  - 相关物理效果计算
+  - 7边形的旋转
+  - 小球不会重叠
+  - 小球不会超过7边形
+- 物理
+  - 摩擦，碰撞，重力，小球弹性模拟
+- 编程语言
+  -Python
+- Prompt 语言
+  - 英语
 
 ## 测试 Prompt
 
@@ -106,10 +123,16 @@ Write a Python program that shows 20 balls bouncing inside a spinning heptagon:
 
 ![](./assets/images/gpt-4.5-high-score.png)
 
-**Claude-3.7-Sonnet** 和 **DeepSeek-R1** 则因为多引用了 random 库扣了2分, 并列第二名
+**Claude-3.7-Sonnet** 和 **DeepSeek-R1** 则因为多引用了 random 库扣了2分, Gemini-2.5-Pro-Experimental-03-25 则因旋转速度过快 扣了2分, 这些模型并列第二名
 
+**deepseek-r1**  
 ![](./assets/images/deepseek-r1-high-score.png)
+
+**claude-3.7-sonnet**  
 ![](./assets/images/claude-3.7-sonnet-high-score.png)
+
+**Gemini-2.5-Pro-Experimental-03-25**  
+![](./assets/images/Gemini-2.5-Pro-Experimental-03-25.png)
 
 ## Winner
 

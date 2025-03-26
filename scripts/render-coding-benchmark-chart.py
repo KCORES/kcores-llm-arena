@@ -16,22 +16,22 @@ plt.rcParams["font.family"] = "Sarasa Mono SC"
 # Define benchmark paths and their max scores
 benchmarks = {
     "benchmark-ball-bouncing-inside-spinning-heptagon": {
-        "path": "../benchmark-ball-bouncing-inside-spinning-heptagon/scripts/benchmark-data.json",
+        "path": "./benchmark-ball-bouncing-inside-spinning-heptagon/scripts/benchmark-data.json",
         "max_score": 90,
         "display_name": "ball-bouncing-inside-spinning-heptagon",
     },
     "benchmark-mandelbrot-set-meet-libai": {
-        "path": "../benchmark-mandelbrot-set-meet-libai/scripts/benchmark-data.json",
+        "path": "./benchmark-mandelbrot-set-meet-libai/scripts/benchmark-data.json",
         "max_score": 110,
         "display_name": "mandelbrot-set-meet-libai",
     },
     "benchmark-mars-mission": {
-        "path": "../benchmark-mars-mission/scripts/benchmark-data.json",
+        "path": "./benchmark-mars-mission/scripts/benchmark-data.json",
         "max_score": 65,
         "display_name": "mars-mission",
     },
     "benchmark-solar-system": {
-        "path": "../benchmark-solar-system/scripts/benchmark-data.json",
+        "path": "./benchmark-solar-system/scripts/benchmark-data.json",
         "max_score": 90,
         "display_name": "solar-system",
     },
@@ -151,6 +151,9 @@ plt.xticks(rotation=45, ha="right")
 plt.tight_layout()
 # Save the plot as PNG file
 plt.savefig(
-    "llm_benchmark_results_normalized.png", dpi=300, bbox_inches="tight", pad_inches=0.5
+    "./scripts/llm_benchmark_results_normalized.png",
+    dpi=300,
+    bbox_inches="tight",
+    pad_inches=0.5,
 )
 plt.show()
