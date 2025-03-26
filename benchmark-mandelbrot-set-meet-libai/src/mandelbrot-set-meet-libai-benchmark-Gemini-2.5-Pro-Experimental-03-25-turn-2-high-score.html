@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            /* Prevent scrollbars */
+            background-color: #000;
+            /* Black background for uncovered areas */
+        }
+
+        canvas {
+            display: block;
+            /* Remove potential space below canvas */
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #statsOverlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.75);
+            /* Semi-transparent white */
+            padding: 8px 12px;
+            border-radius: 8px;
+            /* Rounded corners */
+            font-family: monospace;
+            font-size: 14px;
+            /* Make stats slightly more readable */
+            color: black;
+            /* Black text */
+            z-index: 10;
+            /* Ensure it's on top */
+            line-height: 1.4;
+        }
+
+        /* Style for spans inside the overlay for alignment */
+        #statsOverlay span {
+            display: inline-block;
+            min-width: 50px;
+            /* Adjust as needed for alignment */
+            text-align: right;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <div id="statsOverlay">
+        <div>FPS     : <span id="fps">0</span></div>
+        <div>AVG FPS : <span id="avgFps">0</span></div>
+        <div>FRAME   : <span id="frameCounter">0/200</span></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // No transparency needed for canvas bg
+
+        // --- DOM Elements for Stats ---
+        const statsFps = document.getElementById('fps');
+        const statsAvgFps = document.getElementById('avgFps');
+        const statsFrameCounter = document.getElementById('frameCounter');
+
+        // --- Animation & Rendering Constants ---
+        const FONT_SIZE = 8; // px
+        const CHAR_GRID_SIZE = 8; // px, size of each character cell (width & height)
+        const MAX_FRAMES = 200;
+        const ZOOM_FACTOR_PER_FRAME = 1.005; // 1 + 0.5% zoom per frame
+        const MAX_ITERATIONS = 150; // Balance between detail and performance
+
+        // --- Mandelbrot Parameters ---
+        const TARGET_CENTER_X = -0.75; // Center on the junction of main cardioid and period-2 bulb
+        const TARGET_CENTER_Y = 0.0;
+        const INITIAL_VIEW_WIDTH_COMPLEX = 4.0; // Initial width in the complex plane
+
+        // --- Character Set (静夜思 by 李白) ---
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        // 去重并保留原有的字符顺序，不包含标点符号 (诗本身无标点)
+        const uniqueChars = Array.from(new Set(poem.split(''))).join('');
+        const charsLength = uniqueChars.length;
+
+        // --- Color Set (由浅到深色 specified, but used dark outside to light inside) ---
+        const colorsHex = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde',
+            '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398',
+            '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c',
+            '#17184b', '#0f2350'
+        ];
+        // Reverse for requirement: "字符从 mandelbrot set的最外围使用最深的颜色，然后依次变浅"
+        // Index 0 should be darkest (most iterations), highest index lightest (fewest iterations)
+        const colors = colorsHex.slice().reverse(); // Create a reversed copy
+        const numColors = colors.length;
+
+        // --- State Variables ---
+        let width, height; // Canvas dimensions in pixels
+        let cols, rows;    // Number of character columns/rows
+        let currentFrame = 0;
+        let currentZoom = 1.0; // Represents magnification factor
+        let viewCenterX = TARGET_CENTER_X;
+        let viewCenterY = TARGET_CENTER_Y;
+
+        // --- FPS Calculation Variables ---
+        let lastTimestamp = 0;
+        let frameTimes = []; // Stores durations of recent frames for current FPS
+        let totalFrameTimeSum = 0; // For calculating average FPS over MAX_FRAMES
+        let avgFps = 0;
+        const FPS_SMA_WINDOW = 30; // Simple Moving Average window for current FPS display
+
+        // --- Mandelbrot Calculation Function ---
+        function calculateMandelbrot(cx, cy) {
+            // Check for Main cardioid and period-2 bulb first (optimization)
+            const p = Math.sqrt((cx - 0.25) * (cx - 0.25) + cy * cy);
+            if (cx < p - 2 * p * p + 0.25) {
+                return MAX_ITERATIONS; // Inside cardioid
+            }
+            if ((cx + 1) * (cx + 1) + cy * cy < 0.0625) { // (cx+1)^2 + cy^2 < (1/4)^2
+                return MAX_ITERATIONS; // Inside period-2 bulb
+            }
+
+            let zx = 0;
+            let zy = 0;
+            let iter = 0;
+            // Iterate z = z^2 + c
+            while (zx * zx + zy * zy < 4 && iter < MAX_ITERATIONS) {
+                let tempX = zx * zx - zy * zy + cx;
+                zy = 2 * zx * zy + cy;
+                zx = tempX;
+                iter++;
+            }
+            return iter; // Number of iterations before escaping or hitting max
+        }
+
+        // --- Canvas Resizing ---
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            cols = Math.floor(width / CHAR_GRID_SIZE);
+            rows = Math.floor(height / CHAR_GRID_SIZE);
+
+            // Adjust canvas rendering context properties
+            ctx.font = `${FONT_SIZE}px monospace`; // Monospace for grid alignment
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top'; // Align text rendering to top-left of cell
+
+            // Recalculate initial zoom based on 50% requirement if needed (simplification: just reset zoom)
+            // The initial view width (INITIAL_VIEW_WIDTH_COMPLEX) determines the starting scale.
+            // The main set (~2.5 units wide) will occupy roughly 2.5 / INITIAL_VIEW_WIDTH_COMPLEX of the screen width.
+            // With INITIAL_VIEW_WIDTH_COMPLEX = 4.0, this is ~62.5%, close enough to 50% visually.
+            console.log(`Resized: ${width}x${height}, Grid: ${cols}x${rows}`);
+        }
+
+        // --- Rendering Function ---
+        function render() {
+            // Clear canvas (efficiently, as alpha is false)
+            ctx.fillStyle = '#000000'; // Black background
+            ctx.fillRect(0, 0, width, height);
+
+            // Calculate current view boundaries in the complex plane
+            const currentViewWidth = INITIAL_VIEW_WIDTH_COMPLEX / currentZoom;
+            const currentViewHeight = currentViewWidth * (height / width); // Maintain aspect ratio
+
+            const complexMinX = viewCenterX - currentViewWidth / 2;
+            const complexMinY = viewCenterY - currentViewHeight / 2;
+
+            // Calculate step size per character cell in complex plane
+            const stepX = currentViewWidth / cols;
+            const stepY = currentViewHeight / rows;
+
+            // Pre-calculate common values for the loop if possible
+            // (Not much to pre-calculate here that changes per frame)
+
+            // Iterate over character grid
+            for (let y = 0; y < rows; y++) {
+                const cy = complexMinY + y * stepY;
+                const screenY = y * CHAR_GRID_SIZE;
+
+                for (let x = 0; x < cols; x++) {
+                    const cx = complexMinX + x * stepX;
+                    const screenX = x * CHAR_GRID_SIZE;
+
+                    const iterations = calculateMandelbrot(cx, cy);
+
+                    // Only draw if the point escaped (not inside the set)
+                    if (iterations < MAX_ITERATIONS) {
+                        // Map iterations to color index (darkest for low iter, lightest for high iter)
+                        // Ensure index stays within bounds [0, numColors - 1]
+                        const colorIndex = Math.min(Math.floor((iterations / (MAX_ITERATIONS - 1)) * numColors), numColors - 1);
+
+                        // Map iterations to character index (cycling through the poem)
+                        const charIndex = iterations % charsLength;
+
+                        // Set color and draw character
+                        ctx.fillStyle = colors[colorIndex];
+                        ctx.fillText(uniqueChars[charIndex], screenX, screenY);
+                    }
+                    // Else: Inside the set (iterations == MAX_ITERATIONS), leave blank (already black)
+                }
+            }
+        }
+
+        // --- Animation Loop ---
+        function animate(timestamp) {
+            // --- FPS Calculation ---
+            const deltaTime = timestamp - lastTimestamp; // Time since last frame in ms
+            if (lastTimestamp > 0 && deltaTime > 0) {
+                const currentFps = 1000 / deltaTime;
+
+                // Update current FPS using SMA
+                frameTimes.push(currentFps);
+                if (frameTimes.length > FPS_SMA_WINDOW) {
+                    frameTimes.shift(); // Remove oldest frame time
+                }
+                const fpsSum = frameTimes.reduce((a, b) => a + b, 0);
+                statsFps.textContent = (fpsSum / frameTimes.length).toFixed(1);
+
+                // Accumulate for average FPS calculation later
+                totalFrameTimeSum += deltaTime;
+            }
+            lastTimestamp = timestamp;
+
+            // --- Render Frame ---
+            render();
+
+            // --- Update Stats Display ---
+            statsFrameCounter.textContent = `${currentFrame + 1}/${MAX_FRAMES}`;
+
+            // --- Prepare for Next Frame / Reset ---
+            currentFrame++;
+
+            if (currentFrame < MAX_FRAMES) {
+                // Zoom in for the next frame
+                currentZoom *= ZOOM_FACTOR_PER_FRAME;
+                // Keep center fixed
+                viewCenterX = TARGET_CENTER_X;
+                viewCenterY = TARGET_CENTER_Y;
+                requestAnimationFrame(animate);
+            } else {
+                // --- End of Cycle: Calculate Average FPS and Reset ---
+                if (currentFrame > 0 && totalFrameTimeSum > 0) {
+                    avgFps = (currentFrame * 1000) / totalFrameTimeSum;
+                    statsAvgFps.textContent = avgFps.toFixed(1);
+                    console.log(`Cycle complete. Average FPS: ${avgFps.toFixed(1)}`);
+                } else {
+                    statsAvgFps.textContent = 'N/A'; // Handle case where no frames rendered
+                }
+
+                // Reset state for the next loop
+                currentFrame = 0;
+                currentZoom = 1.0;
+                viewCenterX = TARGET_CENTER_X;
+                viewCenterY = TARGET_CENTER_Y;
+                totalFrameTimeSum = 0;
+                frameTimes = []; // Reset FPS calculation window
+                lastTimestamp = 0; // Avoid large deltaTime jump on restart
+
+                // No need to call resizeCanvas unless window actually resized,
+                // but ensures cols/rows are correct if resize happened mid-cycle.
+                // resizeCanvas(); // Optional: uncomment if resize issues observed on reset
+
+                console.log("Resetting animation...");
+                requestAnimationFrame(animate); // Start the next cycle
+            }
+        }
+
+        // --- Initialization ---
+        window.addEventListener('resize', resizeCanvas, false);
+
+        // Initial setup
+        resizeCanvas(); // Set initial size and calculate grid
+        console.log("Starting Mandelbrot Animation...");
+        console.log("Characters:", uniqueChars);
+        console.log("Colors (Darkest to Lightest):", colors);
+
+        // Start the animation loop
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+
+</html>

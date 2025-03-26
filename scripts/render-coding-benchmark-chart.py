@@ -9,29 +9,29 @@ from datetime import datetime, timezone, timedelta
 parser = argparse.ArgumentParser(description="Render LLM benchmark chart")
 
 # Add custom font
-font_path = "../assets/fonts/sarasa-mono-sc-regular.ttf"
+font_path = "./assets/fonts/sarasa-mono-sc-regular.ttf"
 font_manager.fontManager.addfont(font_path)
 plt.rcParams["font.family"] = "Sarasa Mono SC"
 
 # Define benchmark paths and their max scores
 benchmarks = {
     "benchmark-ball-bouncing-inside-spinning-heptagon": {
-        "path": "../benchmark-ball-bouncing-inside-spinning-heptagon/scripts/benchmark-data.json",
+        "path": "./benchmark-ball-bouncing-inside-spinning-heptagon/scripts/benchmark-data.json",
         "max_score": 90,
         "display_name": "ball-bouncing-inside-spinning-heptagon",
     },
     "benchmark-mandelbrot-set-meet-libai": {
-        "path": "../benchmark-mandelbrot-set-meet-libai/scripts/benchmark-data.json",
+        "path": "./benchmark-mandelbrot-set-meet-libai/scripts/benchmark-data.json",
         "max_score": 110,
         "display_name": "mandelbrot-set-meet-libai",
     },
     "benchmark-mars-mission": {
-        "path": "../benchmark-mars-mission/scripts/benchmark-data.json",
+        "path": "./benchmark-mars-mission/scripts/benchmark-data.json",
         "max_score": 65,
         "display_name": "mars-mission",
     },
     "benchmark-solar-system": {
-        "path": "../benchmark-solar-system/scripts/benchmark-data.json",
+        "path": "./benchmark-solar-system/scripts/benchmark-data.json",
         "max_score": 90,
         "display_name": "solar-system",
     },

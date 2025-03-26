@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            /* Prevent scrollbars */
+            height: 100%;
+            width: 100%;
+            background-color: #fff;
+            /* White background */
+        }
+
+        canvas {
+            display: block;
+            /* Remove potential extra space below canvas */
+            width: 100%;
+            height: 100%;
+        }
+
+        #infoBox {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            padding: 8px 12px;
+            background-color: rgba(255, 255, 255, 0.8);
+            /* Semi-transparent white */
+            border-radius: 8px;
+            /* Rounded corners */
+            font-family: monospace;
+            font-size: 12px;
+            color: black;
+            /* Black text */
+            z-index: 10;
+            line-height: 1.4;
+        }
+
+        #infoBox span {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <div id="infoBox">
+        <span id="fpsDisplay">FPS: 0</span>
+        <span id="avgFpsDisplay">AVG FPS: N/A</span>
+        <span id="frameDisplay">FRAME: 0/200</span>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const POEM = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const COLORS = [ // Lightest to darkest (as provided)
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde',
+            '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398',
+            '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c',
+            '#17184b', '#0f2350'
+        ];
+        const REVERSED_COLORS = [...COLORS].reverse(); // Darkest to lightest for rendering
+
+        const FONT_SIZE = 8;
+        const CHAR_WIDTH = 8;
+        const CHAR_HEIGHT = 8;
+        const MAX_ITERATIONS = 150; // Adjust for performance vs detail balance
+        const TOTAL_FRAMES = 200;
+        const ZOOM_PER_FRAME = 1.005; // 0.5% zoom in per frame
+        const INITIAL_VIEW_WIDTH_FACTOR = 0.5; // Mandelbrot takes 50% of screen width initially
+        const CENTER_X = -0.75; // Junction of main cardioid and period-2 bulb
+        const CENTER_Y = 0;
+        const ESCAPE_RADIUS_SQ = 4; // |z|^2 > 4 means escape
+
+        // --- Setup ---
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // No transparency needed for background
+        const fpsDisplay = document.getElementById('fpsDisplay');
+        const avgFpsDisplay = document.getElementById('avgFpsDisplay');
+        const frameDisplay = document.getElementById('frameDisplay');
+
+        let width, height, numCols, numRows;
+        let uniqueChars = [];
+
+        let frameCount = 0;
+        let zoom = 1.0;
+        let animationFrameId = null;
+        let lastFrameTime = performance.now();
+        let frameTimes = [];
+        let totalFrameTime = 0;
+        let avgFps = 0;
+
+        // --- Worker Setup ---
+        const numWorkers = Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 8)); // Use available cores, up to 8
+        const workers = [];
+        let rowsPerWorker = 0;
+        let pendingWorkers = 0;
+        let resultsBuffer = []; // Stores results [{x, y, n, charIndex}] from workers for the current frame
+
+        // Function to prepare characters from the poem
+        function prepareChars() {
+            const cleanedPoem = POEM.replace(/[^\u4e00-\u9fa5]/g, ''); // Remove non-Chinese chars
+            const charSet = new Set();
+            uniqueChars = [];
+            for (const char of cleanedPoem) {
+                if (!charSet.has(char)) {
+                    charSet.add(char);
+                    uniqueChars.push(char);
+                }
+            }
+            if (uniqueChars.length === 0) {
+                // Fallback if poem processing fails
+                uniqueChars = ['*', '+', '.', ' '];
+                console.warn("Poem processing resulted in empty set, using fallback characters.");
+            }
+            console.log("Using characters:", uniqueChars.join(''));
+        }
+
+        // --- Mandelbrot Calculation (Core Logic for Worker) ---
+        // This code will be run inside the Web Worker
+        const workerLogic = `
+            const MAX_ITERATIONS_W = ${MAX_ITERATIONS};
+            const ESCAPE_RADIUS_SQ_W = ${ESCAPE_RADIUS_SQ};
+            const CENTER_X_W = ${CENTER_X};
+            const CENTER_Y_W = ${CENTER_Y};
+
+            // Check if a point is inside the main cardioid or period-2 bulb
+            function isInBulbs(cx, cy) {
+                // Main cardioid check
+                const q = (cx - 0.25) * (cx - 0.25) + cy * cy;
+                if (q * (q + (cx - 0.25)) < 0.25 * cy * cy) {
+                    return true;
+                }
+                // Period-2 bulb check
+                if ((cx + 1) * (cx + 1) + cy * cy < 0.0625) { // 1/16 = 0.0625
+                    return true;
+                }
+                return false;
+            }
+
+            // Calculate Mandelbrot iterations
+            function calculateMandelbrot(cx, cy) {
+                if (isInBulbs(cx, cy)) {
+                    return -1; // Indicate point is inside bulbs (leave blank)
+                }
+
+                let zx = 0.0;
+                let zy = 0.0;
+                let zx2 = 0.0;
+                let zy2 = 0.0;
+                let n = 0;
+                while (n < MAX_ITERATIONS_W && zx2 + zy2 < ESCAPE_RADIUS_SQ_W) {
+                    zy = 2.0 * zx * zy + cy;
+                    zx = zx2 - zy2 + cx;
+                    zx2 = zx * zx;
+                    zy2 = zy * zy;
+                    n++;
+                }
+                return n; // Return iteration count (or MAX_ITERATIONS if inside)
+            }
+
+            self.onmessage = function(e) {
+                const { startRow, endRow, width, height, numCols, viewParams, uniqueCharsLen } = e.data;
+                const { viewXMin, viewYMin, viewWidth, viewHeight } = viewParams;
+                const results = [];
+
+                const charWidth = ${CHAR_WIDTH};
+                const charHeight = ${CHAR_HEIGHT};
+
+                for (let r = startRow; r < endRow; r++) {
+                    const screenY = r * charHeight;
+                    const cy = viewYMin + (screenY / height) * viewHeight;
+
+                    for (let c = 0; c < numCols; c++) {
+                        const screenX = c * charWidth;
+                        const cx = viewXMin + (screenX / width) * viewWidth;
+
+                        const n = calculateMandelbrot(cx, cy);
+
+                        if (n !== -1 && n < MAX_ITERATIONS_W) { // Escaped and not in bulbs
+                             const charIndex = n % uniqueCharsLen; // Cycle through chars based on iteration
+                             results.push({ x: c, y: r, n: n, charIndex: charIndex });
+                        } else if (n === -1) {
+                            // Inside bulb, explicitly mark to skip drawing if needed,
+                            // but current logic just doesn't add it to results.
+                        }
+                        // If n === MAX_ITERATIONS_W (inside set but not bulbs), it's also skipped.
+                    }
+                }
+                self.postMessage({ results: results, startRow: startRow });
+            };
+        `;
+
+        // --- Worker Initialization ---
+        function setupWorkers() {
+            const blob = new Blob([workerLogic], { type: 'application/javascript' });
+            const workerUrl = URL.createObjectURL(blob);
+
+            console.log(`Initializing ${numWorkers} workers.`);
+
+            for (let i = 0; i < numWorkers; i++) {
+                const worker = new Worker(workerUrl);
+                worker.onmessage = (e) => {
+                    // Append results from this worker
+                    resultsBuffer = resultsBuffer.concat(e.data.results);
+                    pendingWorkers--;
+                    if (pendingWorkers === 0) {
+                        // All workers finished for this frame, proceed to draw
+                        drawResults();
+                        // Start calculation for the next frame immediately after drawing
+                        requestAnimationFrame(mainLoop);
+                    }
+                };
+                worker.onerror = (e) => {
+                    console.error(`Worker error: ${e.message}`, e);
+                    // Handle error - maybe stop animation or try to recover
+                    cancelAnimationFrame(animationFrameId);
+                };
+                workers.push(worker);
+            }
+            URL.revokeObjectURL(workerUrl); // Clean up blob URL
+        }
+
+        // --- Canvas Resizing ---
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            numCols = Math.ceil(width / CHAR_WIDTH);
+            numRows = Math.ceil(height / CHAR_HEIGHT);
+
+            // Recalculate worker distribution
+            rowsPerWorker = Math.ceil(numRows / numWorkers);
+
+            // Reset font after resize (context state might be lost)
+            ctx.font = `${FONT_SIZE}px monospace`;
+            ctx.textBaseline = 'top'; // Draw text from top-left corner
+
+            console.log(`Resized to ${width}x${height}, Grid: ${numCols}x${numRows}, ${rowsPerWorker} rows/worker`);
+        }
+
+        // --- Animation Control ---
+        function resetAnimation() {
+            console.log("Resetting animation.");
+            // Calculate Average FPS
+            if (frameTimes.length > 0) {
+                const averageTime = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+                avgFps = (1000 / averageTime).toFixed(1);
+                avgFpsDisplay.textContent = `AVG FPS: ${avgFps}`;
+            } else {
+                avgFpsDisplay.textContent = `AVG FPS: N/A`;
+            }
+
+            frameCount = 0;
+            zoom = 1.0;
+            frameTimes = [];
+            totalFrameTime = 0;
+
+            // Restart the loop
+            // Don't call mainLoop directly, let requestAnimationFrame handle it
+            if (animationFrameId === null) { // Avoid multiple loops if reset is called rapidly
+                lastFrameTime = performance.now(); // Reset timer
+                animationFrameId = requestAnimationFrame(mainLoop);
+            }
+
+        }
+
+        // --- Drawing ---
+        function drawResults() {
+            const currentTime = performance.now();
+            const deltaTime = currentTime - lastFrameTime;
+            lastFrameTime = currentTime;
+
+            if (frameCount > 0) { // Avoid division by zero and skewed first frame
+                frameTimes.push(deltaTime);
+                if (frameTimes.length > TOTAL_FRAMES * 1.5) { // Keep buffer size reasonable
+                    frameTimes.shift();
+                }
+            }
+            totalFrameTime += deltaTime;
+
+
+            // Calculate Instantaneous FPS (smoothed over a few frames maybe?)
+            const currentFps = (1000 / deltaTime).toFixed(1);
+
+            // Update Displays
+            fpsDisplay.textContent = `FPS: ${currentFps}`;
+            frameDisplay.textContent = `FRAME: ${frameCount + 1}/${TOTAL_FRAMES}`;
+
+
+            // Clear canvas for the new frame
+            // Set background using fillRect for consistent clearing
+            ctx.fillStyle = '#FFFFFF'; // Use white background
+            ctx.fillRect(0, 0, width, height);
+
+
+            // Draw points from buffer
+            for (const point of resultsBuffer) {
+                // Map iteration count 'n' to color index
+                // Small n (escapes quickly, outer) -> Darker color (high index in REVERSED_COLORS)
+                // Large n (escapes slowly, inner) -> Lighter color (low index in REVERSED_COLORS)
+                const colorIndex = Math.min(REVERSED_COLORS.length - 1, Math.floor(point.n / 4)); // Adjust divisor for color spread
+                // const colorIndex = Math.floor(((MAX_ITERATIONS - point.n) / MAX_ITERATIONS) * (REVERSED_COLORS.length));
+                // const safeColorIndex = Math.max(0, Math.min(REVERSED_COLORS.length - 1, colorIndex));
+
+                ctx.fillStyle = REVERSED_COLORS[colorIndex]; // Use reversed palette
+                ctx.fillText(
+                    uniqueChars[point.charIndex],
+                    point.x * CHAR_WIDTH,
+                    point.y * CHAR_HEIGHT
+                );
+            }
+
+            // Prepare for next frame
+            resultsBuffer = []; // Clear buffer for next worker results
+            frameCount++;
+            zoom *= ZOOM_PER_FRAME;
+
+            if (frameCount >= TOTAL_FRAMES) {
+                resetAnimation();
+                // The reset function will handle restarting the loop via requestAnimationFrame
+                return; // Exit drawResults here, resetAnimation will schedule the next frame
+            }
+
+            // requestAnimationFrame(mainLoop); moved to worker callback
+        }
+
+
+        // --- Main Animation Loop ---
+        function mainLoop() {
+
+            if (frameCount >= TOTAL_FRAMES) {
+                // This should ideally not be reached if reset logic is correct, but acts as a safeguard
+                resetAnimation();
+                return; // Stop this path
+            }
+
+            // Calculate view parameters based on zoom and center
+            // Initial width in complex plane should make the set take 50% of canvas width
+            // Standard Mandelbrot width is roughly 3 units (-2 to 1).
+            // If 3 units = 50% canvas width, then full canvas width = 6 units initially.
+            // Let's refine: Target initial view width = 4.0 centered at -0.75.
+            const baseViewWidth = 4.0; // Initial complex plane width to view
+            const currentViewWidth = baseViewWidth / zoom;
+            const currentViewHeight = currentViewWidth * (height / width); // Maintain aspect ratio
+
+            const viewXMin = CENTER_X - currentViewWidth / 2;
+            const viewYMin = CENTER_Y - currentViewHeight / 2;
+
+            const viewParams = {
+                viewXMin: viewXMin,
+                viewYMin: viewYMin,
+                viewWidth: currentViewWidth,
+                viewHeight: currentViewHeight
+            };
+
+            // --- Distribute Work to Workers ---
+            pendingWorkers = numWorkers;
+            resultsBuffer = []; // Clear results buffer for this new frame
+
+            for (let i = 0; i < numWorkers; i++) {
+                const startRow = i * rowsPerWorker;
+                const endRow = Math.min((i + 1) * rowsPerWorker, numRows);
+
+                if (startRow < endRow) { // Ensure there are rows to process
+                    workers[i].postMessage({
+                        startRow: startRow,
+                        endRow: endRow,
+                        width: width,
+                        height: height,
+                        numCols: numCols,
+                        viewParams: viewParams,
+                        uniqueCharsLen: uniqueChars.length
+                    });
+                } else {
+                    pendingWorkers--; // No work for this worker
+                }
+            }
+
+            // If somehow no workers were assigned work (e.g., numRows = 0)
+            if (pendingWorkers === 0 && numRows > 0) {
+                console.warn("No workers seem to have been assigned tasks.");
+                // Proceed to draw potentially empty frame and request next
+                drawResults();
+                requestAnimationFrame(mainLoop);
+            } else if (pendingWorkers === 0 && numRows === 0) {
+                // Canvas size is zero, wait for resize
+                console.log("Canvas size zero, waiting for resize.");
+            }
+            // -> Drawing (drawResults) will be triggered by the last worker finishing
+            // -> Next frame request (requestAnimationFrame) will be called within drawResults or worker callback completion logic
+        }
+
+        // --- Initialization ---
+        function init() {
+            prepareChars();
+            resizeCanvas(); // Initial sizing
+            setupWorkers(); // Create workers
+
+            // Set canvas font properties once
+            ctx.font = `${FONT_SIZE}px monospace`;
+            ctx.textBaseline = 'top'; // Consistent baseline
+
+            // Add resize listener
+            window.addEventListener('resize', () => {
+                // Debounce resize slightly? For now, just resize and reset.
+                console.log("Resize detected.");
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId); // Stop current animation frame request
+                    animationFrameId = null; // Mark as stopped
+                }
+                resizeCanvas();
+                resetAnimation(); // Reset state and restart loop cleanly
+            });
+
+            // Start the animation loop
+            console.log("Starting animation...");
+            lastFrameTime = performance.now(); // Initialize timer
+            animationFrameId = requestAnimationFrame(mainLoop); // Start the first frame calculation
+        }
+
+        // --- Start ---
+        window.onload = init;
+
+    </script>
+</body>
+
+</html>

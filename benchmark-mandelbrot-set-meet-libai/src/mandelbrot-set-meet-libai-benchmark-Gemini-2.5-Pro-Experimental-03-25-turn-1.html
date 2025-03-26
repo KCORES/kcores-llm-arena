@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        /* 确保全屏，移除默认边距和滚动条 */
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+            background-color: #000000;
+            /* 背景设为黑色 */
+        }
+
+        /* 画布样式 */
+        #mandelbrotCanvas {
+            display: block;
+            /* position: absolute; top: 0; left: 0; */
+            /* display:block 通常足够 */
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 状态显示样式 */
+        #statsDisplay {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            /* 半透明白色背景 */
+            padding: 5px 10px;
+            border-radius: 5px;
+            /* 圆角 */
+            font-family: monospace;
+            /* 等宽字体 */
+            font-size: 12px;
+            /* 字体大小 */
+            color: black;
+            /* 黑色字体 */
+            z-index: 10;
+            /* 确保在画布之上 */
+        }
+
+        #statsDisplay span {
+            margin-right: 15px;
+            /* 指示器之间的间距 */
+        }
+
+        #statsDisplay span:last-child {
+            margin-right: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 画布元素 -->
+    <canvas id="mandelbrotCanvas"></canvas>
+
+    <!-- 状态显示元素 -->
+    <div id="statsDisplay">
+        <span id="fps">FPS: 0.0</span>
+        <span id="avgFps">AVG FPS: N/A</span>
+        <span id="frameCounter">CURRENT FRAME: 0/200</span>
+    </div>
+
+    <script>
+        // --- 配置参数 ---
+        const MAX_ITERATIONS = 150; // 最大迭代次数，影响细节和性能
+        const ZOOM_FACTOR_PER_FRAME = 1.005; // 每帧放大 0.5% -> 1 + 0.005 = 1.005
+        const TOTAL_FRAMES = 200; // 总渲染帧数
+        const FONT_SIZE = 8; // 字体大小
+        const GRID_SIZE = 8; // 字体渲染排列间距 (与字体大小一致，无间距)
+        const CENTER_X = -0.743643887037151; // Main cardioid and period bulbs 的交界处近似值 (Misiurewicz point M(1,1/2))
+        const CENTER_Y = 0.131825904205330;  // 如果要求是心形线尖点，则为 -0.75, 0. 这里使用一个更有趣的点
+        // const CENTER_X = -0.75; // 如果严格要求是主心形线和周期2球茎的交点（尖点）
+        // const CENTER_Y = 0.0;
+        const INITIAL_VIEW_WIDTH_RATIO = 0.5; // 初始图形宽度占屏幕宽度的比例
+
+        // 颜色候选集 (由浅到深) - 注意：要求是从外围（迭代次数少）用深色，内部（迭代次数多）用浅色
+        const COLORS_INPUT = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+        // 反转颜色数组以匹配要求：外围(低迭代)深色 -> 内部(高迭代)浅色
+        const COLORS = [...COLORS_INPUT].reverse();
+
+        // 李白《静夜思》
+        const POEM = "床前明月光疑是地上霜举头望明月低头思故乡";
+        // 去重并保留顺序，不含标点 (原诗已无标点)
+        const ASCII_CHARS = [...new Set(POEM)].join('');
+
+        // --- 全局变量 ---
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+        const fpsDisplay = document.getElementById('fps');
+        const avgFpsDisplay = document.getElementById('avgFps');
+        const frameCounterDisplay = document.getElementById('frameCounter');
+
+        let canvasWidth = window.innerWidth;
+        let canvasHeight = window.innerHeight;
+        let frameNumber = 0; // 当前帧序号 (0 to TOTAL_FRAMES - 1)
+        let animationStartTime = 0; // 用于计算总平均FPS
+        let frameCountForAverage = 0; // 用于计算总平均FPS的帧数计数
+        let lastTimestamp = 0; // 上一帧的时间戳，用于计算当前FPS
+
+        let initialViewWidth = 0; // 初始复数平面可视宽度
+        let initialViewHeight = 0; // 初始复数平面可视高度
+
+        // Web Worker 相关
+        const NUM_WORKERS = Math.max(1, navigator.hardwareConcurrency || 4); // 使用硬件线程数，至少1个
+        const workers = [];
+        let workerResults = [];
+        let workersFinished = 0;
+        let isRendering = false; // 防止重复启动渲染
+
+        // --- 初始化 ---
+        function initialize() {
+            resizeCanvas(); // 设置初始画布大小和视图参数
+            setupWorkers(); // 创建 Web Workers
+            lastTimestamp = performance.now();
+            animationStartTime = lastTimestamp;
+            frameCountForAverage = 0;
+            frameNumber = 0;
+            avgFpsDisplay.textContent = 'AVG FPS: N/A'; // 重置平均FPS显示
+            console.log(`使用 ${NUM_WORKERS} 个 Web Workers`);
+            requestAnimationFrame(animationLoop); // 启动动画循环
+        }
+
+        // --- 画布和视图调整 ---
+        function resizeCanvas() {
+            canvasWidth = window.innerWidth;
+            canvasHeight = window.innerHeight;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+
+            // 重新计算初始视图大小
+            // Mandelbrot set 大致范围是 x: -2.5 到 1, y: -1.5 到 1.5 (宽度约3.5, 高度约3)
+            // 我们让初始宽度为 3.5，使其占据屏幕宽度的 INITIAL_VIEW_WIDTH_RATIO
+            const baseWidth = 3.5; // 复数平面中Mandelbrot的大致宽度
+            initialViewWidth = baseWidth / INITIAL_VIEW_WIDTH_RATIO;
+            // 保持宽高比
+            initialViewHeight = initialViewWidth * (canvasHeight / canvasWidth);
+
+            // 设置字体 - 每次调整大小后都需要重新设置，因为context可能重置
+            ctx.font = `${FONT_SIZE}px monospace`;
+            ctx.textBaseline = 'top'; // 绘制文本时从顶部对齐，方便网格计算
+
+            // 如果正在渲染中调整大小，可能需要取消当前帧并重新开始
+            // 为简单起见，这里仅调整参数，下一帧会使用新尺寸
+        }
+
+        // --- Web Worker 设置 ---
+        function setupWorkers() {
+            // 销毁旧的 workers (如果存在)
+            workers.forEach(worker => worker.terminate());
+            workers.length = 0;
+
+            // 创建 Worker 代码的 Blob URL
+            const workerCode = `
+                // --- Worker 内的 Mandelbrot 计算 ---
+                function isInBulb(cx, cy) {
+                    // Main cardioid check (近似)
+                    const q = (cx - 0.25) * (cx - 0.25) + cy * cy;
+                    if (q * (q + (cx - 0.25)) < 0.25 * cy * cy) {
+                        return true; // Inside main cardioid
+                    }
+                    // Period-2 bulb check (近似)
+                    if ((cx + 1) * (cx + 1) + cy * cy < 0.0625) { // 1/16 = 0.0625
+                        return true; // Inside period-2 bulb
+                    }
+                    return false;
+                }
+
+                function getMandelbrotIteration(cx, cy, maxIter) {
+                    // 先检查是否在主要区域内，若是则直接返回最大迭代次数（表示留空）
+                    if (isInBulb(cx, cy)) {
+                        return maxIter;
+                    }
+
+                    let zx = 0.0;
+                    let zy = 0.0;
+                    let iter = 0;
+                    // |z|^2 = zx*zx + zy*zy
+                    // 优化: 避免在循环中重复计算 zx*zx 和 zy*zy
+                    let zx2 = 0.0;
+                    let zy2 = 0.0;
+
+                    while (zx2 + zy2 <= 4.0 && iter < maxIter) {
+                        zy = 2.0 * zx * zy + cy;
+                        zx = zx2 - zy2 + cx;
+                        zx2 = zx * zx;
+                        zy2 = zy * zy;
+                        iter++;
+                    }
+                    return iter;
+                }
+
+                self.onmessage = function(event) {
+                    const {
+                        startRow, endRow, cols,
+                        startX, startY, viewWidth, viewHeight,
+                        maxIter, poemChars, colors, gridSize
+                    } = event.data;
+
+                    const results = [];
+                    const numChars = poemChars.length;
+                    const numColors = colors.length;
+
+                    for (let y = startRow; y < endRow; y++) {
+                        const cy = startY + (y / (endRow - startRow)) * (viewHeight * (endRow - startRow) / Math.ceil(viewHeight / gridSize)); // 微调映射以匹配网格
+                        const py = y * gridSize; // 屏幕Y坐标
+
+                        for (let x = 0; x < cols; x++) {
+                           const cx = startX + (x / cols) * viewWidth;
+                           // const cy = startY + (y / rows) * viewHeight; // 复数平面坐标
+                            const px = x * gridSize; // 屏幕X坐标
+
+                            const iterations = getMandelbrotIteration(cx, cy, maxIter);
+
+                            if (iterations < maxIter) { // 小于 maxIter 才绘制字符
+                                // 颜色映射: 迭代次数少(外围) -> 索引小(深色)
+                                // 迭代次数多(内部) -> 索引大(浅色)
+                                const colorIndex = Math.min(numColors - 1, Math.floor((iterations / (maxIter - 1)) * numColors));
+
+                                // 字符映射: 循环使用诗词字符
+                                const charIndex = iterations % numChars;
+
+                                results.push({
+                                    px: px,
+                                    py: py,
+                                    char: poemChars[charIndex],
+                                    color: colors[colorIndex]
+                                });
+                            }
+                            // else: iterations === maxIter (内部或留空区域)，不添加到 results
+                        }
+                    }
+                    self.postMessage(results); // 将计算结果发送回主线程
+                };
+            `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const workerUrl = URL.createObjectURL(blob);
+
+            // 创建指定数量的 Worker
+            for (let i = 0; i < NUM_WORKERS; i++) {
+                const worker = new Worker(workerUrl);
+                worker.onmessage = (event) => {
+                    workerResults.push(...event.data); // 收集来自 Worker 的结果
+                    workersFinished++;
+                    if (workersFinished === NUM_WORKERS) {
+                        // 所有 Worker 完成计算，可以进行绘制
+                        drawResults();
+                    }
+                };
+                worker.onerror = (error) => {
+                    console.error('Worker Error:', error);
+                    // 考虑处理错误，例如尝试重新启动或减少 worker 数量
+                    workersFinished++; // 标记完成以避免卡死
+                    if (workersFinished === NUM_WORKERS) {
+                        drawResults(); // 尝试绘制已有结果
+                    }
+                };
+                workers.push(worker);
+            }
+            URL.revokeObjectURL(workerUrl); // 释放Blob URL
+        }
+
+        // --- 动画循环 ---
+        function animationLoop(timestamp) {
+            if (isRendering) {
+                requestAnimationFrame(animationLoop); // 如果上一帧仍在渲染，跳过此帧请求
+                return;
+            }
+            isRendering = true; // 标记开始渲染
+
+            const deltaTime = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+
+            // 计算并显示当前FPS
+            const currentFps = 1000 / deltaTime;
+            fpsDisplay.textContent = `FPS: ${currentFps.toFixed(1)}`;
+
+            // 更新总帧数计数器和时间
+            frameCountForAverage++;
+
+            // --- 计算当前帧参数 ---
+            const currentZoom = Math.pow(ZOOM_FACTOR_PER_FRAME, frameNumber);
+            const viewWidth = initialViewWidth / currentZoom;
+            const viewHeight = initialViewHeight / currentZoom;
+            const startX = CENTER_X - viewWidth / 2;
+            const startY = CENTER_Y - viewHeight / 2;
+
+            const cols = Math.ceil(canvasWidth / GRID_SIZE);
+            const rows = Math.ceil(canvasHeight / GRID_SIZE);
+
+            // --- 分发任务给 Workers ---
+            workerResults = []; // 清空上一帧的结果
+            workersFinished = 0;
+            const rowsPerWorker = Math.ceil(rows / NUM_WORKERS);
+
+            for (let i = 0; i < NUM_WORKERS; i++) {
+                const startRow = i * rowsPerWorker;
+                const endRow = Math.min(startRow + rowsPerWorker, rows);
+                if (startRow >= endRow) continue; // 没有行需要处理
+
+                workers[i].postMessage({
+                    startRow, endRow, cols,
+                    startX, startY, viewWidth, viewHeight,
+                    maxIter: MAX_ITERATIONS,
+                    poemChars: ASCII_CHARS,
+                    colors: COLORS,
+                    gridSize: GRID_SIZE // Worker 可能需要 gridSize 来精确映射 y -> cy
+                });
+            }
+
+            // 注意：绘制操作现在移到 worker 的 onmessage 回调函数中了
+            // 当所有 worker 完成后，drawResults会被调用
+        }
+
+        // --- 绘制结果 ---
+        function drawResults() {
+            // 1. 清除画布
+            ctx.fillStyle = '#000000'; // 使用黑色背景填充
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            // 2. 绘制所有计算好的字符
+            ctx.font = `${FONT_SIZE}px monospace`; // 确保字体设置正确
+            ctx.textBaseline = 'top';
+
+            // 优化：按颜色分组绘制可以减少状态切换，但对于大量不同颜色的点，效果可能不明显
+            // 这里直接遍历绘制
+            for (const result of workerResults) {
+                ctx.fillStyle = result.color;
+                ctx.fillText(result.char, result.px, result.py);
+            }
+
+            // 3. 更新帧计数器显示
+            frameCounterDisplay.textContent = `CURRENT FRAME: ${frameNumber + 1}/${TOTAL_FRAMES}`;
+
+            // 4. 帧数增加与重置逻辑
+            frameNumber++;
+            if (frameNumber >= TOTAL_FRAMES) {
+                // 计算并显示平均FPS
+                const totalTimeSeconds = (performance.now() - animationStartTime) / 1000;
+                const avgFps = frameCountForAverage / totalTimeSeconds;
+                avgFpsDisplay.textContent = `AVG FPS: ${avgFps.toFixed(1)}`;
+
+                // 重置动画
+                frameNumber = 0;
+                animationStartTime = performance.now(); // 重置平均FPS计时起点
+                frameCountForAverage = 0;
+                // 视图参数会在下一帧的 animationLoop 中基于 frameNumber=0 自动重置
+                console.log("Animation reset.");
+            }
+
+            isRendering = false; // 标记渲染结束
+
+            // 5. 请求下一帧
+            requestAnimationFrame(animationLoop);
+        }
+
+
+        // --- 事件监听 ---
+        window.addEventListener('resize', () => {
+            // 停止当前的渲染循环，等待调整完成
+            // 在实践中，更复杂的处理可能需要取消 worker 任务等
+            // 这里简单地调整画布并让下一帧使用新尺寸
+            resizeCanvas();
+            console.log("Window resized, canvas adjusted.");
+            // 可选：如果希望立即重绘，可以取消下一帧请求并立即调用 initialize 或 animationLoop
+            // 但考虑到 worker 可能正在运行，简单调整尺寸让下一帧自然适应更安全
+        });
+
+        // --- 启动 ---
+        initialize();
+
+    </script>
+</body>
+
+</html>

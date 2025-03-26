@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Set</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            color: #000;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="stats">
+        <div>FPS: <span id="fps">0</span></div>
+        <div>AVG FPS: <span id="avgFps">0</span></div>
+        <div>CURRENT FRAME: <span id="currentFrame">0</span>/200</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsElement = document.getElementById('fps');
+        const avgFpsElement = document.getElementById('avgFps');
+        const currentFrameElement = document.getElementById('currentFrame');
+
+        // 调整画布大小为全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 静夜思诗词，去重并保留顺序
+        const poem = "床前明月光疑是地上霜举头望山低头思故乡";
+        const uniqueChars = [];
+        for (const char of poem) {
+            if (!uniqueChars.includes(char)) {
+                uniqueChars.push(char);
+            }
+        }
+
+        // 颜色梯度
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+            '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+            '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+            '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+
+        // Mandelbrot参数
+        const maxIterations = 100;
+        let zoom = 1;
+        const zoomFactor = 1.005;
+        const totalFrames = 200;
+        let currentFrame = 0;
+
+        // FPS统计
+        let lastTime = performance.now();
+        let fps = 0;
+        let frameTimes = [];
+        let avgFps = 0;
+
+        // Mandelbrot计算函数
+        function mandelbrot(x0, y0) {
+            let x = 0;
+            let y = 0;
+            let iteration = 0;
+
+            while (x * x + y * y <= 4 && iteration < maxIterations) {
+                const xtemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xtemp;
+                iteration++;
+            }
+
+            return iteration;
+        }
+
+        // 检查是否在主心形或周期灯泡区域
+        function isInMainCardioidOrBulbs(x, y) {
+            // 检查主心形
+            const q = (x - 0.25) ** 2 + y ** 2;
+            if (q * (q + (x - 0.25)) <= 0.25 * y ** 2) {
+                return true;
+            }
+
+            // 检查主灯泡 (-1, 0)
+            if ((x + 1) ** 2 + y ** 2 <= 0.0625) {
+                return true;
+            }
+
+            return false;
+        }
+
+        // 渲染函数
+        function render() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const size = Math.min(width, height) * 0.5 * zoom;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = '8px monospace';
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            const charWidth = 8;
+            const charHeight = 8;
+            const cols = Math.floor(width / charWidth);
+            const rows = Math.floor(height / charHeight);
+
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const x0 = (i * charWidth - centerX) / size - 0.75;
+                    const y0 = (j * charHeight - centerY) / size;
+
+                    if (isInMainCardioidOrBulbs(x0, y0)) {
+                        continue;
+                    }
+
+                    const iteration = mandelbrot(x0, y0);
+                    if (iteration < maxIterations) {
+                        const colorIndex = Math.floor((iteration / maxIterations) * (colors.length - 1));
+                        const charIndex = iteration % uniqueChars.length;
+
+                        ctx.fillStyle = colors[colorIndex];
+                        ctx.fillText(uniqueChars[charIndex], i * charWidth, j * charHeight);
+                    }
+                }
+            }
+
+            // 更新帧计数和缩放
+            currentFrame++;
+            if (currentFrame > totalFrames) {
+                currentFrame = 1;
+                zoom = 1;
+                // 计算平均FPS
+                if (frameTimes.length > 0) {
+                    const totalTime = frameTimes.reduce((a, b) => a + b, 0);
+                    avgFps = Math.round((frameTimes.length / totalTime) * 1000);
+                    avgFpsElement.textContent = avgFps;
+                }
+                frameTimes = [];
+            } else {
+                zoom *= Math.pow(zoomFactor, currentFrame);
+
+                // 计算FPS
+                const now = performance.now();
+                const deltaTime = now - lastTime;
+                lastTime = now;
+                fps = Math.round(1000 / deltaTime);
+                frameTimes.push(deltaTime);
+                fpsElement.textContent = fps;
+                currentFrameElement.textContent = `${currentFrame}/${totalFrames}`;
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        // 启动渲染
+        render();
+    </script>
+</body>
+
+</html>

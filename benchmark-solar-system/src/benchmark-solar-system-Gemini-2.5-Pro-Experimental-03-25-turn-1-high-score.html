@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #infoBox {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            color: black;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
+            min-width: 130px;
+        }
+
+        #infoBox span {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarSystemCanvas"></canvas>
+    <div id="infoBox">
+        <span id="fpsCounter">FPS: --</span>
+        <span id="avgFpsCounter">AVG FPS: --</span>
+        <span id="dayCounter">Earth Day: 0</span>
+    </div>
+
+    <script>
+        // --- 配置项 ---
+        const TIME_COMPRESSION = 10; // 1 real second = 10 Earth days
+        const EARTH_YEAR_DAYS = 365.25;
+        const PIXEL_SIZE = 2; // 像素块的大小，用于绘制星球，1会非常慢，建议 2 或更大
+
+        // --- 天体数据 ---
+        // 注意: radius 和 orbitRadius 是相对视觉值，非真实比例
+        const celestialBodiesData = [
+            { name: "Sun", colors: ["#f2831f", "#f15d22", "#d94125", "#a41d22"], radius: 35, orbitRadius: 0, orbitalPeriodDays: 0 },
+            { name: "Mercury", colors: ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"], radius: 4, orbitRadius: 60, orbitalPeriodDays: 88 },
+            { name: "Venus", colors: ["#868a8d", "#d9b392", "#f3dbc3", "#414141"], radius: 7, orbitRadius: 90, orbitalPeriodDays: 225 },
+            { name: "Earth", colors: ["#1f386f", "#0b1725", "#386f61", "#dac0a5"], radius: 8, orbitRadius: 130, orbitalPeriodDays: EARTH_YEAR_DAYS },
+            { name: "Mars", colors: ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"], radius: 6, orbitRadius: 180, orbitalPeriodDays: 687 },
+            { name: "Jupiter", colors: ["#282411", "#c08137", "#bfb09c", "#a6705b"], radius: 25, orbitRadius: 280, orbitalPeriodDays: 4333 },
+            { name: "Saturn", colors: ["#f3cf89", "#dab778", "#736b59", "#c1a480"], radius: 22, orbitRadius: 390, orbitalPeriodDays: 10759, hasRing: true }, // 添加土星环标记
+            { name: "Uranus", colors: ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"], radius: 16, orbitRadius: 500, orbitalPeriodDays: 30687 },
+            { name: "Neptune", colors: ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"], radius: 15, orbitRadius: 600, orbitalPeriodDays: 60190 },
+            { name: "Pluto", colors: ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"], radius: 3, orbitRadius: 690, orbitalPeriodDays: 90560 } // 包含冥王星
+        ];
+
+        // --- Canvas 设置 ---
+        const canvas = document.getElementById('solarSystemCanvas');
+        const ctx = canvas.getContext('2d');
+        let canvasWidth, canvasHeight, centerX, centerY;
+
+        // --- 离屏 Canvas (轨道) ---
+        const offscreenCanvas = document.createElement('canvas');
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+
+        // --- 状态变量 ---
+        let celestialBodies = [];
+        let earthDayCounter = 0;
+        let lastTimestamp = 0;
+        let frameCount = 0;
+        let fps = 0;
+        let avgFps = 0;
+        const fpsHistory = [];
+        const maxFpsHistoryLength = 60; // 计算最近60帧的平均FPS
+        let worker = null;
+        let animationFrameId = null;
+
+        // --- Web Worker 代码 ---
+        const workerCode = `
+            const EARTH_YEAR_DAYS = ${EARTH_YEAR_DAYS};
+            const TIME_COMPRESSION = ${TIME_COMPRESSION};
+            const TWO_PI = Math.PI * 2;
+
+            // 地球每毫秒转过的弧度 (真实时间)
+            // const earthRadPerMsReal = TWO_PI / (EARTH_YEAR_DAYS * 24 * 60 * 60 * 1000);
+            // 地球每毫秒转过的弧度 (模拟时间)
+            const earthRadPerMsSimulated = TWO_PI / (EARTH_YEAR_DAYS * (1000 / TIME_COMPRESSION));
+
+            let bodiesData = [];
+
+            self.onmessage = function(e) {
+                const { type, payload } = e.data;
+
+                if (type === 'init') {
+                    bodiesData = payload.map(body => ({
+                        name: body.name,
+                        orbitalPeriodDays: body.orbitalPeriodDays,
+                        angle: body.angle,
+                        // 计算每个行星相对于地球的速度因子
+                        // 0周期的太阳特殊处理
+                        speedFactor: body.orbitalPeriodDays === 0 ? 0 : EARTH_YEAR_DAYS / body.orbitalPeriodDays
+                    }));
+                } else if (type === 'update') {
+                    const deltaTime = payload.deltaTime;
+                    if (!bodiesData.length || !deltaTime) return;
+
+                    const updatedAngles = bodiesData.map(body => {
+                        if (body.speedFactor !== 0) {
+                            // 角度增量 = 地球模拟速度 * 速度因子 * 时间差
+                            const deltaAngle = earthRadPerMsSimulated * body.speedFactor * deltaTime;
+                            body.angle = (body.angle + deltaAngle) % TWO_PI;
+                        }
+                        return { name: body.name, angle: body.angle };
+                    });
+
+                    self.postMessage({ type: 'anglesUpdated', payload: updatedAngles });
+                }
+            };
+        `;
+
+        // --- 初始化函数 ---
+        function init() {
+            setupCanvas();
+            createCelestialBodies();
+            setupWorker();
+            drawStaticOffscreenContent(); // 绘制静态轨道
+            lastTimestamp = performance.now();
+            animationLoop(lastTimestamp);
+
+            window.addEventListener('resize', handleResize);
+        }
+
+        // --- Canvas 尺寸设置 ---
+        function setupCanvas() {
+            canvasWidth = window.innerWidth;
+            canvasHeight = window.innerHeight;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            centerX = canvasWidth / 2;
+            centerY = canvasHeight / 2;
+
+            // 更新离屏Canvas尺寸
+            offscreenCanvas.width = canvasWidth;
+            offscreenCanvas.height = canvasHeight;
+        }
+
+        // --- 预渲染星球图像 ---
+        function createPixelatedSphereImage(radius, colors) {
+            const diameter = Math.max(radius * 2, PIXEL_SIZE); // 确保画布至少为 PIXEL_SIZE
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = diameter;
+            tempCanvas.height = diameter;
+            const center = radius; // 中心点在 (radius, radius)
+
+            // ImageData 操作可能更快，但fillRect更容易理解和实现像素化效果
+            for (let y = 0; y < diameter; y += PIXEL_SIZE) {
+                for (let x = 0; x < diameter; x += PIXEL_SIZE) {
+                    // 计算像素块中心点相对于圆心的距离
+                    const blockCenterX = x + PIXEL_SIZE / 2;
+                    const blockCenterY = y + PIXEL_SIZE / 2;
+                    const distSq = (blockCenterX - center) ** 2 + (blockCenterY - center) ** 2;
+
+                    if (distSq <= radius ** 2) {
+                        const colorIndex = Math.floor(Math.random() * colors.length);
+                        tempCtx.fillStyle = colors[colorIndex];
+                        tempCtx.fillRect(x, y, PIXEL_SIZE, PIXEL_SIZE);
+                    }
+                }
+            }
+            return tempCanvas; // 返回包含预渲染图像的Canvas元素
+        }
+
+
+        // --- 创建天体对象 ---
+        function createCelestialBodies() {
+            celestialBodies = celestialBodiesData.map(data => ({
+                ...data,
+                angle: Math.random() * Math.PI * 2, // 随机初始角度
+                image: createPixelatedSphereImage(data.radius, data.colors) // 预渲染图像
+            }));
+            // 如果有土星环，也预渲染
+            const saturn = celestialBodies.find(b => b.name === "Saturn");
+            if (saturn && saturn.hasRing) {
+                saturn.ringImage = createSaturnRingImage(saturn.radius);
+            }
+        }
+
+        // --- 预渲染土星环 ---
+        function createSaturnRingImage(planetRadius) {
+            const ringOuterRadius = planetRadius * 2.2;
+            const ringInnerRadius = planetRadius * 1.5;
+            const diameter = ringOuterRadius * 2;
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = diameter;
+            tempCanvas.height = diameter;
+            const center = ringOuterRadius;
+
+            tempCtx.beginPath();
+            tempCtx.arc(center, center, ringOuterRadius, 0, Math.PI * 2, false);
+            tempCtx.arc(center, center, ringInnerRadius, 0, Math.PI * 2, true); // 逆时针挖空
+            tempCtx.fillStyle = 'rgba(218, 183, 120, 0.5)'; // 半透明的环颜色
+            tempCtx.fill();
+
+            // 添加一点纹理感 (可选)
+            tempCtx.strokeStyle = 'rgba(115, 107, 89, 0.3)';
+            tempCtx.lineWidth = 1;
+            for (let r = ringInnerRadius; r < ringOuterRadius; r += 3) {
+                tempCtx.beginPath();
+                tempCtx.arc(center, center, r, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
+                tempCtx.stroke();
+            }
+
+            return tempCanvas;
+        }
+
+
+        // --- 设置 Web Worker ---
+        function setupWorker() {
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const workerUrl = URL.createObjectURL(blob);
+            worker = new Worker(workerUrl);
+            URL.revokeObjectURL(workerUrl); // 释放 URL 对象
+
+            // 初始化 Worker 数据
+            const initialData = celestialBodies.map(body => ({
+                name: body.name,
+                orbitalPeriodDays: body.orbitalPeriodDays,
+                angle: body.angle
+            }));
+            worker.postMessage({ type: 'init', payload: initialData });
+
+            // 监听 Worker 返回的结果
+            worker.onmessage = function (e) {
+                const { type, payload } = e.data;
+                if (type === 'anglesUpdated') {
+                    // 更新主线程中的角度
+                    payload.forEach(updatedBody => {
+                        const body = celestialBodies.find(b => b.name === updatedBody.name);
+                        if (body) {
+                            body.angle = updatedBody.angle;
+                        }
+                    });
+                    // Worker 完成计算后，可以触发重绘（如果不在raf循环中自动做的话）
+                    // 但通常在 requestAnimationFrame 循环中直接使用最新角度绘制即可
+                }
+            };
+
+            worker.onerror = function (error) {
+                console.error("Worker Error:", error);
+                // 可以考虑停止动画或回退到主线程计算
+                terminateWorker(); // 发生错误时终止 worker
+                // 可选：添加一个标志，让主线程接管计算
+                // useWorker = false;
+            };
+        }
+
+        // --- 终止 Worker ---
+        function terminateWorker() {
+            if (worker) {
+                worker.terminate();
+                worker = null;
+                console.log("Worker terminated.");
+            }
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            // 可以在这里显示错误信息给用户
+            document.getElementById('infoBox').innerHTML += "<br><span style='color:red;'>Error: Calculation failed. Animation stopped.</span>";
+        }
+
+
+        // --- 绘制静态内容到离屏 Canvas ---
+        function drawStaticOffscreenContent() {
+            offscreenCtx.clearRect(0, 0, canvasWidth, canvasHeight); // 清除旧内容
+            offscreenCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; // 半透明白色轨道线
+            offscreenCtx.lineWidth = 1;
+
+            celestialBodies.forEach(body => {
+                if (body.orbitRadius > 0) {
+                    offscreenCtx.beginPath();
+                    offscreenCtx.arc(centerX, centerY, body.orbitRadius, 0, Math.PI * 2);
+                    offscreenCtx.stroke();
+                }
+            });
+        }
+
+        // --- 动画循环 ---
+        function animationLoop(timestamp) {
+            const deltaTime = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+
+            // 更新FPS计数器
+            updateFps(deltaTime);
+
+            // 更新地球日计数器
+            earthDayCounter += (deltaTime / 1000) * TIME_COMPRESSION;
+            document.getElementById('dayCounter').textContent = `Earth Day: ${Math.floor(earthDayCounter)}`;
+
+            // 请求 Worker 更新位置
+            if (worker) {
+                // 优化：仅当 deltaTime > 0 时才发送消息
+                if (deltaTime > 0) {
+                    worker.postMessage({ type: 'update', payload: { deltaTime: deltaTime } });
+                }
+            } else {
+                // 如果Worker不可用（例如已终止），可以在主线程计算（可选）
+                // updatePositionsInMainThread(deltaTime);
+                console.warn("Worker not available, positions not updated.");
+                // 或者直接停止动画
+                // return;
+            }
+
+
+            // --- 绘制 ---
+            // 1. 清除主画布
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+            // 2. 绘制背景（如果需要，例如星星）
+            // drawStars(); // (可选实现)
+
+            // 3. 绘制离屏画布（轨道）
+            ctx.drawImage(offscreenCanvas, 0, 0);
+
+            // 4. 绘制天体和标签
+            celestialBodies.forEach(body => {
+                // 计算屏幕坐标
+                const x = centerX + body.orbitRadius * Math.cos(body.angle);
+                const y = centerY + body.orbitRadius * Math.sin(body.angle);
+
+                // 绘制土星环（在行星之前绘制，使其位于行星之后）
+                if (body.ringImage) {
+                    const ringWidth = body.ringImage.width;
+                    const ringHeight = body.ringImage.height;
+                    ctx.drawImage(body.ringImage, x - ringWidth / 2, y - ringHeight / 2);
+                }
+
+                // 绘制预渲染的星球图像
+                const imgWidth = body.image.width;
+                const imgHeight = body.image.height;
+                // 图像的中心应该在 (x, y)
+                ctx.drawImage(body.image, x - imgWidth / 2, y - imgHeight / 2);
+
+                // 绘制标签
+                ctx.fillStyle = 'white';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                // 将标签放在星球上方一点的位置
+                ctx.fillText(body.name, x, y - body.radius - 5);
+            });
+
+            // 请求下一帧
+            animationFrameId = requestAnimationFrame(animationLoop);
+        }
+
+        // --- FPS 更新 ---
+        function updateFps(deltaTime) {
+            if (deltaTime > 0) {
+                fps = 1000 / deltaTime;
+                fpsHistory.push(fps);
+                if (fpsHistory.length > maxFpsHistoryLength) {
+                    fpsHistory.shift(); // 移除最旧的记录
+                }
+
+                let sumFps = 0;
+                for (let i = 0; i < fpsHistory.length; i++) {
+                    sumFps += fpsHistory[i];
+                }
+                avgFps = sumFps / fpsHistory.length;
+
+                // 更新显示 (每隔几帧更新一次以减少DOM操作)
+                if (frameCount % 10 === 0) {
+                    document.getElementById('fpsCounter').textContent = `FPS: ${Math.round(fps)}`;
+                    document.getElementById('avgFpsCounter').textContent = `AVG FPS: ${Math.round(avgFps)}`;
+                }
+            }
+            frameCount++;
+        }
+
+        // --- 窗口大小调整处理 ---
+        function handleResize() {
+            // 停止当前动画循环以避免在调整大小时绘制错误
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null; // 清除ID
+            }
+
+            setupCanvas(); // 重新设置画布尺寸和中心点
+            drawStaticOffscreenContent(); // 重新绘制轨道到（新的）离屏画布
+
+            // 可选：如果星球大小或轨道距离需要根据屏幕大小调整，可以在这里更新 celestialBodies 数据
+            // ...
+
+            // 如果 Worker 存在且天体数据被修改，可能需要重新初始化 Worker
+            // if (worker && dataChanged) {
+            //     const initialData = celestialBodies.map(body => ({...}));
+            //     worker.postMessage({ type: 'init', payload: initialData });
+            // }
+
+            // 等待一小段时间让调整稳定后再重启动画
+            // （或者立即重启，取决于效果）
+            lastTimestamp = performance.now(); // 重置时间戳
+            animationLoop(lastTimestamp); // 重新启动动画循环
+        }
+
+        // --- 页面加载完成后初始化 ---
+        window.onload = init;
+
+        // --- 清理工作 ---
+        window.onunload = () => {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            terminateWorker(); // 页面卸载时确保终止 Worker
+        };
+
+    </script>
+</body>
+
+</html>
