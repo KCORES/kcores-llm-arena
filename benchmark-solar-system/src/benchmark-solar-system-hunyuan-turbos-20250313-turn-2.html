@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar System Animation</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 5px;
+      padding: 10px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div>FPS: <span id="fps">0</span></div>
+    <div>AVG FPS: <span id="avg-fps">0</span></div>
+    <div>Earth Day: <span id="earth-day">0</span></div>
+  </div>
+  <canvas id="solar-system"></canvas>
+  <script>
+    const canvas = document.getElementById('solar-system');
+    const ctx = canvas.getContext('2d');
+    const uiCtx = document.createElement('canvas').getContext('2d');
+    const uiCanvas = document.createElement('canvas');
+    uiCanvas.width = 200;
+    uiCanvas.height = 50;
+    document.body.appendChild(uiCanvas);
+    uiCtx.canvas = uiCanvas;
+
+    let width, height;
+    let planets = [];
+    let earthDays = 0;
+    let lastTime = 0;
+    let fpsSamples = [];
+    const fpsSampleCount = 60;
+
+    class Planet {
+      constructor(name, colorScheme, radius, orbitRadius, orbitSpeed) {
+        this.name = name;
+        this.colorScheme = colorScheme;
+        this.radius = radius;
+        this.orbitRadius = orbitRadius;
+        this.orbitSpeed = orbitSpeed;
+        this.angle = Math.random() * Math.PI * 2;
+        this.staticCtx = document.createElement('canvas').getContext('2d');
+        this.staticCanvas = document.createElement('canvas');
+        this.staticCanvas.width = this.orbitRadius * 2;
+        this.staticCanvas.height = this.orbitRadius * 2;
+        this.staticCtx.canvas = this.staticCanvas;
+        this.drawOrbit();
+      }
+
+      drawOrbit() {
+        const staticCtx = this.staticCtx;
+        staticCtx.clearRect(0, 0, staticCtx.canvas.width, staticCtx.canvas.height);
+        staticCtx.beginPath();
+        staticCtx.arc(
+          staticCtx.canvas.width / 2,
+          staticCtx.canvas.height / 2,
+          this.orbitRadius,
+          0,
+          Math.PI * 2
+        );
+        staticCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        staticCtx.lineWidth = 1;
+        staticCtx.stroke();
+      }
+
+      draw(ctx, scale) {
+        const x = width / 2 + Math.cos(this.angle) * this.orbitRadius * scale;
+        const y = height / 2 + Math.sin(this.angle) * this.orbitRadius * scale;
+        const staticCtx = this.staticCtx;
+
+        // Draw planet
+        const planetCanvas = this.staticCanvas;
+        const planetCtx = planetCanvas.getContext('2d');
+        planetCtx.clearRect(0, 0, planetCanvas.width, planetCanvas.height);
+        const gradient = planetCtx.createRadialGradient(
+          planetCanvas.width / 2,
+          planetCanvas.height / 2,
+          0,
+          planetCanvas.width / 2,
+          planetCanvas.height / 2,
+          this.radius * scale
+        );
+        gradient.addColorStop(0, this.colorScheme[0]);
+        gradient.addColorStop(0.3, this.colorScheme[1]);
+        gradient.addColorStop(0.6, this.colorScheme[2]);
+        gradient.addColorStop(1, this.colorScheme[3]);
+        planetCtx.beginPath();
+        planetCtx.arc(
+          planetCanvas.width / 2,
+          planetCanvas.height / 2,
+          this.radius * scale,
+          0,
+          Math.PI * 2
+        );
+        planetCtx.fillStyle = gradient;
+        planetCtx.fill();
+
+        // Draw label
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(-this.angle + Math.PI / 2);
+        ctx.fillStyle = 'white';
+        ctx.font = '12px Arial';
+        ctx.fillText(this.name, this.radius * scale + 10, 0);
+        ctx.restore();
+
+        // Draw orbit
+        ctx.drawImage(staticCtx.canvas, x - this.orbitRadius * scale, y - this.orbitRadius * scale);
+
+        // Update angle
+        this.angle += this.orbitSpeed / 1000;
+      }
+    }
+
+    function init() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+
+      const sun = new Planet('Sun', ['#f2831f', '#f15d22', '#d94125', '#a41d22'], 20, 0, 0);
+      planets.push(sun);
+
+      const planetsData = [
+        { name: 'Mercury', colorScheme: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], radius: 2, orbitRadius: 50, orbitSpeed: 88 },
+        { name: 'Venus', colorScheme: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], radius: 3, orbitRadius: 80, orbitSpeed: 225 },
+        { name: 'Earth', colorScheme: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], radius: 3.5, orbitRadius: 120, orbitSpeed: 365 },
+        { name: 'Mars', colorScheme: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], radius: 2.8, orbitRadius: 160, orbitSpeed: 687 },
+        { name: 'Jupiter', colorScheme: ['#282411', '#c08137', '#bfb09c', '#a6705b'], radius: 8, orbitRadius: 200, orbitSpeed: 4333 },
+        { name: 'Saturn', colorScheme: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], radius: 7, orbitRadius: 240, orbitSpeed: 10759 },
+        { name: 'Uranus', colorScheme: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], radius: 6, orbitRadius: 280, orbitSpeed: 30660 },
+        { name: 'Neptune', colorScheme: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], radius: 6, orbitRadius: 320, orbitSpeed: 60225 },
+        { name: 'Pluto', colorScheme: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], radius: 1.5, orbitRadius: 360, orbitSpeed: 90560 },
+      ];
+
+      planetsData.forEach(data => {
+        planets.push(new Planet(data.name, data.colorScheme, data.radius, data.orbitRadius, data.orbitSpeed));
+      });
+    }
+
+    function update(deltaTime) {
+      earthDays += deltaTime / 1000 / (365 / 10); // 1 second = 10 Earth days
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, width, height);
+
+      // Draw planets
+      planets.forEach(planet => {
+        planet.draw(ctx, 1);
+      });
+
+      // Draw UI
+      drawUI();
+    }
+
+    function drawUI() {
+      uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+
+      // FPS counter
+      fpsSamples.push(performance.now());
+      if (fpsSamples.length > fpsSampleCount) fpsSamples.shift();
+      const avgFPS = fpsSamples.reduce((a, b) => a + b) / fpsSamples.length;
+      const currentFPS = 1000 / (performance.now() - lastTime);
+
+      uiCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      uiCtx.fillRect(0, 0, uiCanvas.width, uiCanvas.height);
+      uiCtx.fillStyle = 'black';
+      uiCtx.font = '14px Arial';
+      uiCtx.fillText(`FPS: ${Math.round(currentFPS)}`, 10, 20);
+      uiCtx.fillText(`AVG FPS: ${Math.round(avgFPS)}`, 10, 40);
+      uiCtx.fillText(`Earth Day: ${Math.floor(earthDays)}`, 10, 60);
+    }
+
+    function animate(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const deltaTime = timestamp - lastTime;
+
+      update(deltaTime);
+      draw();
+
+      requestAnimationFrame(animate);
+    }
+
+    init();
+    animate();
+  </script>
+</body>
+</html>
