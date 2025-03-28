@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandelbrot Set Animation</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+    #stats {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      color: black;
+    }
+  </style>
+</head>
+<body>
+  <div id="stats">
+    FPS: <span id="fps">0</span> | AVG FPS: <span id="avgFps">0</span> | CURRENT FRAME: <span id="currentFrame">0/200</span>
+  </div>
+  <canvas id="mandelbrotCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById('mandelbrotCanvas');
+    const ctx = canvas.getContext('2d');
+    const stats = {
+      fps: document.getElementById('fps'),
+      avgFps: document.getElementById('avgFps'),
+      currentFrame: document.getElementById('currentFrame')
+    };
+
+    let width, height;
+    let scale = 0.5;
+    let maxIterations = 200;
+    let frameCount = 0;
+    let totalFrames = 200;
+    let fpsSamples = [];
+    let startTime;
+
+    const poem = "床前明月光疑是地上霜举头望明月低头思故乡".split('').filter((c, i, arr) => arr.indexOf(c) === i);
+    const colors = [
+      '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9',
+      '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70',
+      '#192f60', '#1c305c', '#17184b', '#0f2350'
+    ];
+
+    function resizeCanvas() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    function getCharForValue(value) {
+      return poem[value % poem.length];
+    }
+
+    function mandelbrot(x, y, maxIterations) {
+      let zx = 0, zy = 0, iteration = 0;
+      const cx = (x - width / 2) / (0.5 * scale * width) + 0.285;
+      const cy = (y - height / 2) / (0.5 * scale * height) + 0.01;
+      while (zx * zx + zy * zy < 4 && iteration < maxIterations) {
+        const xtemp = zx * zx - zy * zy + cx;
+        zy = 2 * zx * zy + cy;
+        zx = xtemp;
+        iteration++;
+      }
+      return iteration;
+    }
+
+    function drawFrame() {
+      const startTimeFrame = performance.now();
+      ctx.clearRect(0, 0, width, height);
+      const step = Math.floor(maxIterations / colors.length);
+      const centerX = width / 2;
+      const centerY = height / 2;
+
+      for (let y = 0; y < height; y += 8) {
+        for (let x = 0; x < width; x += 8) {
+          const iterations = mandelbrot(x, y, maxIterations);
+          if (iterations === maxIterations) continue; // Skip the main cardioid and bulbs
+          const colorIndex = Math.min(Math.floor(iterations / step), colors.length - 1);
+          const char = getCharForValue(iterations);
+          ctx.fillStyle = colors[colorIndex];
+          ctx.font = '8px monospace';
+          ctx.fillText(char, x, y + 8);
+        }
+      }
+
+      frameCount++;
+      if (frameCount > totalFrames) {
+        frameCount = 1;
+        scale *= 1.005; // Zoom in by 0.5% each cycle
+      }
+
+      const endTimeFrame = performance.now();
+      const frameTime = endTimeFrame - startTimeFrame;
+      fpsSamples.push(1000 / frameTime);
+      if (fpsSamples.length > 100) fpsSamples.shift();
+
+      const avgFps = fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length;
+      stats.fps.textContent = Math.round(1000 / frameTime);
+      stats.avgFps.textContent = Math.round(avgFps);
+      stats.currentFrame.textContent = `${frameCount}/${totalFrames}`;
+
+      if (frameCount <= totalFrames) {
+        requestAnimationFrame(drawFrame);
+      }
+    }
+
+    function init() {
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+      startTime = performance.now();
+      drawFrame();
+    }
+
+    init();
+  </script>
+</body>
+</html>

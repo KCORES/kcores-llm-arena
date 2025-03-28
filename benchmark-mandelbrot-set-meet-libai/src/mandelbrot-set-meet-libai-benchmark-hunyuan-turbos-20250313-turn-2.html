@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandelbrot Set Animation</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+    #stats {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 5px;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      color: black;
+    }
+  </style>
+</head>
+<body>
+  <div id="stats">
+    <span>FPS: <span id="fps">0</span></span>
+    <span>AVG FPS: <span id="avgFps">0</span></span>
+    <span>CURRENT FRAME: <span id="currentFrame">0/200</span></span>
+  </div>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const stats = {
+      fps: document.getElementById('fps'),
+      avgFps: document.getElementById('avgFps'),
+      currentFrame: document.getElementById('currentFrame')
+    };
+
+    let width, height;
+    let scale = 0.5;
+    let frame = 0;
+    let totalFrames = 200;
+    let fpsSamples = [];
+    const charSet = "床前明月光疑是地上霜举头望明月低头思故乡".split('').filter((c, i, a) => a.indexOf(c) === i);
+    const colors = [
+      '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde',
+      '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398',
+      '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c',
+      '#17184b', '#0f2350'
+    ];
+
+    function resizeCanvas() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    function getCharFromValue(value) {
+      const index = Math.floor((charSet.length - 1) * value);
+      return charSet[index];
+    }
+
+    function drawMandelbrot() {
+      const startTime = performance.now();
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const initialSize = Math.min(width, height) * scale / 2;
+      const maxIterations = 100;
+
+      for (let x = 0; x < width; x++) {
+        for (let y = 0; y < height; y++) {
+          const real = map(x, 0, width, -initialSize + centerX, initialSize + centerX);
+          const imaginary = map(y, 0, height, -initialSize + centerY, initialSize + centerY);
+
+          let zx = 0, zy = 0, iteration = 0;
+          while (zx * zx + zy * zy < 4 && iteration < maxIterations) {
+            const xtemp = zx * zx - zy * zy + real;
+            zy = 2 * zx * zy + imaginary;
+            zx = xtemp;
+            iteration++;
+          }
+
+          const value = iteration / maxIterations;
+          const char = getCharFromValue(value);
+          const color = colors[Math.floor(value * (colors.length - 1))];
+          ctx.fillStyle = color;
+          ctx.font = '8px monospace';
+          ctx.fillText(char, x, y);
+        }
+      }
+
+      const endTime = performance.now();
+      const frameTime = endTime - startTime;
+      fpsSamples.push(1000 / frameTime);
+      if (fpsSamples.length > totalFrames) fpsSamples.shift();
+
+      stats.fps.textContent = Math.round(1000 / frameTime);
+      stats.currentFrame.textContent = `${frame}/${totalFrames}`;
+
+      if (frame === totalFrames) {
+        const avgFps = Math.round(fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length);
+        stats.avgFps.textContent = avgFps;
+        frame = 0;
+        scale += 0.005;
+        if (scale > 1) scale = 0.5;
+      }
+
+      frame++;
+    }
+
+    function map(value, start1, stop1, start2, stop2) {
+      return start2 + (stop2 - start2) * ((value - start1) / (stop1 - start1));
+    }
+
+    function animate() {
+      ctx.clearRect(0, 0, width, height);
+      drawMandelbrot();
+      requestAnimationFrame(animate);
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      scale = 0.5;
+      frame = 0;
+    });
+
+    resizeCanvas();
+    animate();
+  </script>
+</body>
+</html>

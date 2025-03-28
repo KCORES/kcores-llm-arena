@@ -614,6 +614,28 @@
         "point_17": 5,
         "point_18": 3,
         "Final-Score": 78
+    },
+    {
+        "LLM": "hunyuan-turbos-20250313",
+        "point_1": 5,
+        "point_2": 5,
+        "point_3": 0,
+        "point_4": 3,
+        "point_5": 5,
+        "point_6": 5,
+        "point_7": 0,
+        "point_8": 5,
+        "point_9": 3,
+        "point_10": 5,
+        "point_11": 3,
+        "point_12": 0,
+        "point_13": 0,
+        "point_14": 0,
+        "point_15": 2,
+        "point_16": 0,
+        "point_17": 3,
+        "point_18": 5,
+        "Final-Score": 49
     }
 ]
 

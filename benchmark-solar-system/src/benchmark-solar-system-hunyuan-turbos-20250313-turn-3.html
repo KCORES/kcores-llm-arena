@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar System Animation</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div>FPS: <span id="fps">0</span></div>
+    <div>AVG FPS: <span id="avg-fps">0</span></div>
+    <div>Earth Day: <span id="earth-day">0</span></div>
+  </div>
+  <canvas id="solar-system"></canvas>
+
+  <script>
+    const canvas = document.getElementById('solar-system');
+    const ctx = canvas.getContext('2d');
+    const uiFps = document.getElementById('fps');
+    const uiAvgFps = document.getElementById('avg-fps');
+    const uiEarthDay = document.getElementById('earth-day');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const planets = [
+      { name: 'Sun', radius: 50, color: ['#f2831f', '#f15d22', '#d94125', '#a41d22'], orbitRadius: 0, speed: 0 },
+      { name: 'Mercury', radius: 5, color: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], orbitRadius: 80, speed: 0.02 },
+      { name: 'Venus', radius: 8, color: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], orbitRadius: 120, speed: 0.015 },
+      { name: 'Earth', radius: 10, color: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], orbitRadius: 160, speed: 0.01 },
+      { name: 'Mars', radius: 8, color: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], orbitRadius: 200, speed: 0.008 },
+      { name: 'Jupiter', radius: 20, color: ['#282411', '#c08137', '#bfb09c', '#a6705b'], orbitRadius: 260, speed: 0.005 },
+      { name: 'Saturn', radius: 18, color: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], orbitRadius: 320, speed: 0.004 },
+      { name: 'Uranus', radius: 15, color: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], orbitRadius: 400, speed: 0.003 },
+      { name: 'Neptune', radius: 15, color: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], orbitRadius: 480, speed: 0.0025 },
+      { name: 'Pluto', radius: 10, color: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], orbitRadius: 560, speed: 0.002 }
+    ];
+
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = canvas.width;
+    offscreenCanvas.height = canvas.height;
+    const offscreenCtx = offscreenCanvas.getContext('2d');
+
+    let lastTime = performance.now();
+    let frameCount = 0;
+    let fps = 0;
+    let avgFps = 0;
+    let earthDay = 0;
+
+    const workers = planets.slice(1).map(planet => {
+      const worker = new Worker(URL.createObjectURL(new Blob([`
+        self.onmessage = function(event) {
+          const { orbitRadius, speed, time } = event.data;
+          const angle = time * speed;
+          const x = orbitRadius * Math.cos(angle);
+          const y = orbitRadius * Math.sin(angle);
+          self.postMessage({ x, y });
+        };
+      `])));
+      worker.onmessage = function(event) {
+        planet.x = event.data.x + canvas.width / 2;
+        planet.y = event.data.y + canvas.height / 2;
+      };
+      return worker;
+    });
+
+    function drawPlanet(planet, ctx) {
+      const colors = planet.color;
+      const gradient = ctx.createRadialGradient(planet.x, planet.y, 0, planet.x, planet.y, planet.radius);
+      gradient.addColorStop(0, colors[0]);
+      gradient.addColorStop(0.5, colors[1]);
+      gradient.addColorStop(0.75, colors[2]);
+      gradient.addColorStop(1, colors[3]);
+      ctx.beginPath();
+      ctx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.closePath();
+
+      ctx.fillStyle = 'black';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(planet.name, planet.x, planet.y);
+    }
+
+    function drawOrbits(ctx) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 1;
+      planets.forEach(planet => {
+        if (planet.name !== 'Sun') {
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2, canvas.height / 2, planet.orbitRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.closePath();
+        }
+      });
+    }
+
+    function update() {
+      const now = performance.now();
+      const delta = now - lastTime;
+      lastTime = now;
+
+      frameCount++;
+      if (now - lastTime > 1000) {
+        fps = frameCount;
+        frameCount = 0;
+        avgFps = Math.round((avgFps * (now - lastTime) + fps * delta) / (now - lastTime + delta));
+      }
+
+      earthDay += 0.01 * (365 / 10); // 1 second = 10 Earth days
+      document.getElementById('earth-day').textContent = Math.floor(earthDay);
+
+      workers.forEach((worker, index) => {
+        worker.postMessage({ orbitRadius: planets[index + 1].orbitRadius, speed: planets[index + 1].speed, time: earthDay });
+      });
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+
+      drawOrbits(offscreenCtx);
+      planets.forEach(planet => {
+        if (planet.name === 'Sun') {
+          drawPlanet(planet, offscreenCtx);
+        }
+      });
+
+      workers.forEach((worker, index) => {
+        worker.onmessage = function(event) {
+          const planet = planets[index + 1];
+          planet.x = event.data.x + canvas.width / 2;
+          planet.y = event.data.y + canvas.height / 2;
+        };
+      });
+
+      planets.forEach(planet => {
+        if (planet.name !== 'Sun') {
+          drawPlanet(planet, ctx);
+        }
+      });
+
+      requestAnimationFrame(update);
+    }
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      offscreenCanvas.width = canvas.width;
+      offscreenCanvas.height = canvas.height;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    update();
+  </script>
+</body>
+</html>
