@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandelbrot Set Animation</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body, html {
+      overflow: hidden;
+      height: 100%;
+    }
+    canvas {
+      display: block;
+    }
+    #stats {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 14px;
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+  <div id="stats">
+    <span>FPS: <span id="fps">0</span></span>
+    <span>AVG FPS: <span id="avgFps">0</span></span>
+    <span>CURRENT FRAME: <span id="currentFrame">0/200</span></span>
+  </div>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const stats = {
+      fps: document.getElementById('fps'),
+      avgFps: document.getElementById('avgFps'),
+      currentFrame: document.getElementById('currentFrame'),
+    };
+    let frameCount = 0;
+    let totalFrames = 200;
+    let lastTime = performance.now();
+    let frameTimes = [];
+    let zoom = 0.5;
+    let centerX = 0;
+    let centerY = 0;
+    let scale = 2 / Math.pow(1.005, zoom);
+
+    const poem = "床前明月光疑是地上霜举头望明月低头思故乡".split('').filter((c, i, arr) => arr.indexOf(c) === i);
+    const colors = [
+      '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde',
+      '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398',
+      '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c',
+      '#17184b', '#0f2350'
+    ];
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      centerX = canvas.width / 2;
+      centerY = canvas.height / 2;
+    }
+
+    function getMandelbrotColor(x, y, maxIterations) {
+      let zx = 0, zy = 0, iteration = 0;
+      const cx = (x - centerX) / scale + centerX / scale;
+      const cy = (y - centerY) / scale + centerY / scale;
+
+      while (zx * zx + zy * zy < 4 && iteration < maxIterations) {
+        const xtemp = zx * zx - zy * zy + cx;
+        zy = 2 * zx * zy + cy;
+        zx = xtemp;
+        iteration++;
+      }
+
+      if (iteration === maxIterations) return 'black'; // Inside Mandelbrot set
+      const colorIndex = Math.floor((iteration / maxIterations) * (colors.length - 1));
+      return colors[colors.length - 1 - colorIndex];
+    }
+
+    function drawMandelbrot() {
+      const maxIterations = 100;
+      const charWidth = 8;
+      const charHeight = 8;
+      const chars = poem;
+
+      for (let y = 0; y < canvas.height; y += charHeight) {
+        for (let x = 0; x < canvas.width; x += charWidth) {
+          const screenX = (x - centerX) / scale + centerX / scale;
+          const screenY = (y - centerY) / scale + centerY / scale;
+          const color = getMandelbrotColor(screenX, screenY, maxIterations);
+
+          if (color !== 'black') {
+            const charIndex = Math.floor(Math.random() * chars.length);
+            ctx.fillStyle = color;
+            ctx.font = `${charHeight}px monospace`;
+            ctx.fillText(chars[charIndex], x, y + charHeight - 2);
+          }
+        }
+      }
+    }
+
+    function updateZoom() {
+      if (frameCount < totalFrames) {
+        zoom += 0.005;
+        scale = 2 / Math.pow(1.005, zoom);
+      } else {
+        frameCount = 0;
+        zoom = 0.5;
+        scale = 2 / Math.pow(1.005, zoom);
+      }
+    }
+
+    function updateStats() {
+      const now = performance.now();
+      const delta = now - lastTime;
+      lastTime = now;
+      frameTimes.push(delta);
+
+      if (frameTimes.length > 60) frameTimes.shift();
+
+      const avgFrameTime = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+      const fps = 1000 / avgFrameTime;
+
+      stats.fps.textContent = Math.round(fps);
+      stats.avgFps.textContent = Math.round(fps);
+      stats.currentFrame.textContent = `${frameCount}/${totalFrames}`;
+    }
+
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawMandelbrot();
+      updateZoom();
+      updateStats();
+      frameCount++;
+
+      if (frameCount <= totalFrames) {
+        requestAnimationFrame(animate);
+      } else {
+        frameCount = 0;
+        animate();
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      drawMandelbrot();
+    });
+
+    resizeCanvas();
+    animate();
+  </script>
+</body>
+</html>
