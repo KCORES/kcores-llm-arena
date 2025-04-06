@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: monospace;
+            overflow: hidden;
+        }
+
+        #fps,
+        #avg-fps,
+        #current-frame {
+            position: fixed;
+            font-size: 16px;
+            color: black;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 4px;
+            border-radius: 4px;
+        }
+
+        #fps {
+            top: 4px;
+            left: 4px;
+        }
+
+        #avg-fps {
+            top: 24px;
+            left: 4px;
+        }
+
+        #current-frame {
+            top: 44px;
+            left: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps"></div>
+    <div id="avg-fps"></div>
+    <div id="current-frame"></div>
+
+    <script>
+        // 李白《静夜思》去重后保留字符顺序，不含标点符号
+        const poem = '床前明月光疑是地上霜'.replace(/[\u4e00-\u9fff]/g, '').split('').filter(Boolean);
+        const colors = ['#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9', '#68669b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'];
+
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        let fpsDiv = document.getElementById('fps');
+        let avgFpsDiv = document.getElementById('avg-fps');
+        let currentFrameDiv = document.getElementById('current-frame');
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        let fontSize = 8;
+        let charWidth = fontSize;
+        let charHeight = fontSize;
+        let charAspect = 1;
+        let scale = 0.5;
+        let maxIterations = 100;
+        let mandelbrotSetX = -0.7435;
+        let mandelbrotSetY = 0.128;
+        let zoom = 1;
+        let maxZoom = 1;
+        let minX = -2.5;
+        let maxX = 1.5;
+        let minY = -1.5;
+        let maxY = 1.5;
+        let centerX = 0;
+        let centerY = 0;
+        let iteration = 0;
+        let lastTime = 0;
+        let frames = 0;
+        let totalTime = 0;
+
+        function init() {
+            canvas.width = width;
+            canvas.height = height;
+            ctx.font = `${fontSize}px monospace`;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+            fpsDiv.style.position = 'fixed';
+            avgFpsDiv.style.position = 'fixed';
+            currentFrameDiv.style.position = 'fixed';
+            fpsDiv.style.top = '4px';
+            fpsDiv.style.left = '4px';
+            fpsDiv.style.background = 'rgba(255, 255, 255, 0.5)';
+            fpsDiv.style.padding = '4px';
+            fpsDiv.style.borderRadius = '4px';
+            avgFpsDiv.style.top = '24px';
+            avgFpsDiv.style.left = '4px';
+            avgFpsDiv.style.background = 'rgba(255, 255, 255, 0.5)';
+            avgFpsDiv.style.padding = '4px';
+            avgFpsDiv.style.borderRadius = '4px';
+            currentFrameDiv.style.top = '44px';
+            currentFrameDiv.style.left = '4px';
+            currentFrameDiv.style.background = 'rgba(255, 255, 255, 0.5)';
+            currentFrameDiv.style.padding = '4px';
+            currentFrameDiv.style.borderRadius = '4px';
+        }
+
+        function drawMandelbrot() {
+            let charIndex = 0;
+            const chars = poem.repeat(Math.ceil(width / charWidth / fontSize)).substring(0, width / charWidth).split('');
+            const colorChars = chars.map((c, i) => {
+                return {
+                    char: c,
+                    color: colors[i % colors.length]
+                };
+            });
+
+            function draw() {
+                ctx.clearRect(0, 0, width, height);
+                for (let y = 0; y < height; y += charHeight) {
+                    for (let x = 0; x < width; x += charWidth) {
+                        let charIndexX = Math.floor(x / charWidth);
+                        let charIndexY = Math.floor(y / charHeight);
+                        if (charIndexX >= width / charWidth || charIndexY >= height / charHeight) continue;
+                        let charColor = colors[Math.floor((iteration / 200) * colors.length) % colors.length];
+                        let asciiCharIndex = charIndex++ % poem.length;
+                        if (charIndex >= poem.length * (height / charHeight) * (width / charWidth)) charIndex = 0;
+                        ctx.fillStyle = charColor;
+                        ctx.fillRect(x, y, charWidth, charHeight);
+                        ctx.fillStyle = '#000';
+                        ctx.fillText(poem[asciiCharIndex % poem.length]], x, y);
+                    }
+                }
+            }
+
+            function getColor(iter) {
+                let gradient = (iter / maxIterations);
+                let index = Math.floor(gradient * (colors.length - 1)));
+                return colors[index];
+            }
+
+            for (let i = 0; i < width * height / (charWidth * charHeight); i++) {
+                let minX = -2.5;
+                let maxX = 1.5;
+                let minY = -1.5;
+                let maxY = 1.5;
+                for (let x = 0; x < width; x += charWidth) {
+                    for (let y = 0; y < height; y += charHeight) {
+                        let cReal = (x - width / 2) * scale + mandelbrotSetX;
+                        let cImaginary = (y - height / 2) * scale + mandelbrotSetY;
+
+                        let zx = 0.0;
+                        let zy = 0.0;
+                        let iter = 0;
+                        let maxIter = 100;
+
+                        while (zx * zx + zy * zy < 4 && iter < maxIter) {
+                            let temp = zx * zx - zy * zy + cReal;
+                            zy = 2 * zx * zy + cImaginary;
+                            zx = temp;
+                            iter++;
+                        }
+
+                        let charIndex = Math.floor((iter / maxIter) * (poem.length - 1)));
+                        ctx.fillStyle = getColor(iter);
+                        ctx.fillText(poem[charIndex % poem.length]], x, y);
+                    }
+                }
+            }
+        }
+
+        init();
+
+        function loop() {
+            let now = performance.now();
+            let deltaTime = (now - lastTime) / 1000;
+            lastTime = now;
+
+            if (iteration < 200) {
+                drawMandelbrot();
+            } else {
+                // 重置
+                iteration = 0;
+            }
+
+            iteration++;
+            requestAnimationFrame(loop);
+        }
+
+        function drawMandelbrot() {
+            ctx.clearRect(0, 0, width, height);
+            for (let y = 0; y < height; y += charHeight) {
+                for (let x = 0; x < width; x += charWidth) {
+                    let zx = (x - width / 2) * 0.01;
+                    let zy = (y - height / 2) * 0.01;
+                    let iter = 0;
+                    let maxIter = 100;
+                    while (zx * zx + zy * zy < 4 && iter < maxIter) {
+                        let temp = zx * zx - zy * zy + mandelbrotSetX;
+                        zy = 2 * zx * zy + mandelbrotSetY;
+                        zx = temp;
+                        iter++;
+                    }
+                    if (iter > maxIterations) {
+                        ctx.fillStyle = colors[colors.length - 1];
+                    } else {
+                        ctx.fillStyle = colors[Math.floor((iter / maxIter) * (colors.length - 1)))];
+                    }
+                    ctx.fillText(poem[charIndex % poem.length]], x, y);
+                }
+            }
+        }
+
+        function loop() {
+            let now = performance.now();
+            if (lastTime === 0) {
+                lastTime = now;
+            }
+            let deltaTime = (now - lastTime) / 1000;
+            lastTime = now;
+
+            if (iteration < 200) {
+                drawMandelbrot();
+            } else {
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+
+</html>

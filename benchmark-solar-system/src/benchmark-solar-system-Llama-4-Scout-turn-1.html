@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>太阳系动画</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        #fps {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 16px;
+            font-family: monospace;
+            color: #fff;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps"></div>
+
+    <script>
+        // 获取canvas元素
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsElement = document.getElementById('fps');
+
+        // 设置canvas全屏
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 定义星球属性
+        const planets = [
+            {
+                name: '太阳',
+                radius: 30,
+                orbit: 0,
+                distance: 0,
+                speed: 0,
+                colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22']
+            },
+            {
+                name: '水星',
+                radius: 2,
+                orbit: 50,
+                distance: 50,
+                speed: 0.1,
+                colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8']
+            },
+            {
+                name: '金星',
+                radius: 5,
+                orbit: 80,
+                distance: 80,
+                speed: 0.06,
+                colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141']
+            },
+            {
+                name: '地球',
+                radius: 6,
+                orbit: 110,
+                distance: 110,
+                speed: 0.05,
+                colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5']
+            },
+            {
+                name: '火星',
+                radius: 4,
+                orbit: 140,
+                distance: 140,
+                speed: 0.04,
+                colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c']
+            },
+            {
+                name: '木星',
+                radius: 12,
+                orbit: 170,
+                distance: 170,
+                speed: 0.03,
+                colors: ['#282411', '#c08137', '#bfb09c', '#a6705b']
+            },
+            {
+                name: '土星',
+                radius: 10,
+                orbit: 200,
+                distance: 200,
+                speed: 0.02,
+                colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480']
+            },
+            {
+                name: '天王星',
+                radius: 8,
+                orbit: 230,
+                distance: 230,
+                speed: 0.01,
+                colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0']
+            },
+            {
+                name: '海王星',
+                radius: 7,
+                orbit: 260,
+                distance: 260,
+                speed: 0.008,
+                colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf']
+            },
+            {
+                name: '冥王星',
+                radius: 3,
+                orbit: 290,
+                distance: 290,
+                speed: 0.005,
+                colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97']
+            }
+        ];
+
+        // 定义常量
+        const DAY_TO_SECOND = 10; // 1秒真实时间=10个地球日
+        const EARTH_DAY = 365; // 地球绕太阳一周为365个地球日
+
+        // 初始化参数
+        let lastTime = 0;
+        let earthDay = 0;
+        let fps = 0;
+        let avgFps = 0;
+        let count = 0;
+
+        // 创建离屏canvas用于静态元素（轨道线）
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = canvas.width;
+        offscreenCanvas.height = canvas.height;
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+
+        // 绘制轨道线
+        for (let i = 1; i < planets.length; i++) {
+            offscreenCtx.beginPath();
+            offscreenCtx.arc(canvas.width / 2, canvas.height / 2, planets[i].distance, 2, 2 * Math.PI);
+            offscreenCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            offscreenCtx.lineWidth = 2;
+            offscreenCtx.stroke();
+        }
+
+        // 主循环
+        function animate(time) {
+            // 计算时间
+            const deltaTime = (time - lastTime) / 1000;
+            lastTime = time;
+            earthDay += deltaTime * (1 / DAY_TO_SECOND);
+
+            // 计算FPS
+            fps++;
+            count++;
+            if (count >= 100) {
+                avgFps = fps / (count / 100);
+                count = 0;
+                fps = 0;
+            }
+
+            // 绘制背景
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(offscreenCanvas, 0, 0);
+
+            // 绘制星球
+            for (let i = 0; i < planets.length; i++) {
+                const planet = planets[i];
+                const angle = (earthDay * planet.speed) % (2 * Math.PI);
+                const x = canvas.width / 2 + planet.distance * Math.cos(angle);
+                const y = canvas.height / 2 + planet.distance * Math.sin(angle);
+
+                // 绘制星球
+                ctx.beginPath();
+                ctx.arc(x, y, planet.radius, 0, 2 * Math.PI);
+                ctx.fillStyle = planet.colors[i % planet.colors.length];
+                ctx.fill();
+
+                // 绘制标签
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = '#fff';
+                ctx.fillText(`[${planet.name}]`, x, y - planet.radius - 10);
+            }
+
+            // 绘制FPS
+            fpsElement.innerText = `FPS: ${fps} AVG FPS: ${avgFps.toFixed(2)} Earth Day: ${earthDay.toFixed(2)}`;
+
+            // 请求下一帧
+            requestAnimationFrame(animate);
+        }
+
+        // 开始动画
+        animate(0);
+    </script>
+</body>
+
+</html>

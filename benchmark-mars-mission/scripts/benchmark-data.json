@@ -491,7 +491,41 @@
         "point_12": 0,
         "point_13": 0,
         "Final-Score": 0
+    },
+    {
+        "LLM": "Llama-4-Scout-17B-16E(109B)",
+        "point_1": 0,
+        "point_2": 3,
+        "point_3": 0,
+        "point_4": 3,
+        "point_5": 0,
+        "point_6": 0,
+        "point_7": 0,
+        "point_8": 0,
+        "point_9": 0,
+        "point_10": 0,
+        "point_11": 3,
+        "point_12": 0,
+        "point_13": 5,
+        "Final-Score": 14
+    },
+    {
+        "LLM": "Llama-4-Maverick-17B-128E(402B)",
+        "point_1": 5,
+        "point_2": 5,
+        "point_3": 5,
+        "point_4": 5,
+        "point_5": 0,
+        "point_6": 0,
+        "point_7": 5,
+        "point_8": 0,
+        "point_9": 0,
+        "point_10": 0,
+        "point_11": 5,
+        "point_12": 0,
+        "point_13": 5,
+        "Final-Score": 35
     }
+    
 ]
-
 

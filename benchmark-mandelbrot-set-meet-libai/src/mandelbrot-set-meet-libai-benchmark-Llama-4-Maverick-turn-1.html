@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #000;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="stats">
+        <span id="fps">FPS: 0</span>
+        <span id="avg-fps">AVG FPS: 0</span>
+        <span id="frame">CURRENT FRAME: 0/200</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const stats = document.getElementById('stats');
+        const fpsElement = document.getElementById('fps');
+        const avgFpsElement = document.getElementById('avg-fps');
+        const frameElement = document.getElementById('frame');
+
+        let width, height;
+        let frame = 0;
+        let fps = 0;
+        let lastTime = 0;
+        let avgFps = 0;
+        let totalFrames = 0;
+        let totalTime = 0;
+
+        const poem = '静夜思床前明月光疑是地上霜举头望明月低头思故乡';
+        const uniquePoem = Array.from(new Set(poem.split(''))).join('');
+        const colors = ['#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'];
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        function drawMandelbrot() {
+            const scale = 0.5 + frame * 0.005;
+            const xmin = -2.5 / scale;
+            const xmax = 1.5 / scale;
+            const ymin = -1.5 / scale;
+            const ymax = 1.5 / scale;
+            const xCenter = (xmin + xmax) / 2;
+            const yCenter = (ymin + ymax) / 2;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = '8px monospace';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+
+            for (let y = 0; y < height; y += 8) {
+                for (let x = 0; x < width; x += 8) {
+                    const x0 = xmin + (x / width) * (xmax - xmin);
+                    const y0 = ymin + (y / height) * (ymax - ymin);
+                    const c = { r: x0, i: y0 };
+                    const z = { r: 0, i: 0 };
+                    let iteration = 0;
+
+                    while (iteration < colors.length && z.r * z.r + z.i * z.i < 4) {
+                        const temp = z.r * z.r - z.i * z.i + c.r;
+                        z.i = 2 * z.r * z.i + c.i;
+                        z.r = temp;
+                        iteration++;
+                    }
+
+                    if (iteration > 0 && iteration < colors.length && Math.abs(x0 - xCenter) > 0.5 && Math.abs(y0 - yCenter) > 0.2) {
+                        ctx.fillStyle = colors[colors.length - iteration];
+                        ctx.fillText(uniquePoem[iteration % uniquePoem.length], x, y);
+                    }
+                }
+            }
+        }
+
+        function updateStats(now) {
+            if (lastTime !== 0) {
+                const deltaTime = now - lastTime;
+                fps = 1000 / deltaTime;
+                totalTime += deltaTime;
+                totalFrames++;
+                fpsElement.textContent = `FPS: ${fps.toFixed(2)}`;
+                frameElement.textContent = `CURRENT FRAME: ${frame}/200`;
+
+                if (frame >= 200) {
+                    avgFps = totalFrames / (totalTime / 1000);
+                    avgFpsElement.textContent = `AVG FPS: ${avgFps.toFixed(2)}`;
+                    totalFrames = 0;
+                    totalTime = 0;
+                }
+            }
+            lastTime = now;
+        }
+
+        function animate(now) {
+            updateStats(now);
+            drawMandelbrot();
+            frame = (frame + 1) % 201;
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

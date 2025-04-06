@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000;
+        }
+
+        #fps-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #000;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps-indicator">
+        <span id="fps">FPS: 0</span>
+        <span id="avg-fps">AVG FPS: 0</span>
+        <span id="current-frame">CURRENT FRAME: 0/200</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsIndicator = document.getElementById('fps-indicator');
+        const fpsSpan = document.getElementById('fps');
+        const avgFpsSpan = document.getElementById('avg-fps');
+        const currentFrameSpan = document.getElementById('current-frame');
+
+        let frameCount = 0;
+        let lastFrameTime = performance.now();
+        let fps = 0;
+        let totalFrames = 0;
+        let totalFps = 0;
+
+        const poem = '床前明月光疑是地上霜举头望明月低头思故乡';
+        const uniquePoem = [...new Set(poem.split(''))].join('');
+        const colors = ['#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function drawMandelbrot() {
+            const scale = 0.5 * Math.min(canvas.width, canvas.height) * (1 + frameCount * 0.005);
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const xmin = centerX - scale;
+            const xmax = centerX + scale;
+            const ymin = centerY - scale;
+            const ymax = centerY + scale;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '8px monospace';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+
+            for (let y = 0; y < canvas.height; y += 8) {
+                for (let x = 0; x < canvas.width; x += 8) {
+                    const cx = xmin + (x - centerX) * (xmax - xmin) / scale;
+                    const cy = ymin + (y - centerY) * (ymax - ymin) / scale;
+                    const m = mandelbrot(cx, cy);
+                    if (m > 0 && m < colors.length) {
+                        ctx.fillStyle = colors[colors.length - m - 1];
+                        ctx.fillText(uniquePoem.charAt(m % uniquePoem.length), x, y);
+                    }
+                }
+            }
+
+            frameCount = (frameCount + 1) % 200;
+            if (frameCount === 0) {
+                totalFps += fps;
+                totalFrames++;
+                avgFpsSpan.textContent = `AVG FPS: ${totalFps / totalFrames.toFixed(2)}`;
+            }
+        }
+
+        function mandelbrot(cx, cy) {
+            let zx = 0;
+            let zy = 0;
+            let zx2 = 0;
+            let zy2 = 0;
+            let iter = 0;
+            while (iter < colors.length && zx2 + zy2 < 4) {
+                zy = 2 * zx * zy + cy;
+                zx = zx2 - zy2 + cx;
+                zx2 = zx * zx;
+                zy2 = zy * zy;
+                iter++;
+            }
+            // Main cardioid and period bulbs
+            if ((zx * zx + zy * zy) < 0.25 || (zx + 1) * (zx + 1) + zy * zy < 0.0625) {
+                return 0;
+            }
+            return iter;
+        }
+
+        function updateFps() {
+            const now = performance.now();
+            const delta = now - lastFrameTime;
+            fps = 1000 / delta;
+            fpsSpan.textContent = `FPS: ${fps.toFixed(2)}`;
+            lastFrameTime = now;
+        }
+
+        function animate() {
+            updateFps();
+            drawMandelbrot();
+            currentFrameSpan.textContent = `CURRENT FRAME: ${frameCount}/200`;
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        animate();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+
+        #fps-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 16px;
+            font-family: monospace;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps-indicator"></div>
+
+    <script>
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        document.body.appendChild(canvas);
+        const fpsIndicator = document.getElementById('fps-indicator');
+
+        // 设置canvas全屏
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 诗词内容
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡".replace(/[\u4e00-\u9fa5]/g, '').split('').filter(Boolean).join('');
+
+        // Mandelbrot Set 配置
+        const minX = -2.5;
+        const maxX = 1.5;
+        const minY = -1.5;
+        const maxY = 1.5;
+        const maxIterations = 100;
+        const zoomFactor = 0.995;
+
+        // 颜色配置
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7',
+            '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9',
+            '#68669b', '#706caa', '#5654a2', '#4d4398',
+            '#4a488e', '#274a78', '#2a4073', '#223a70',
+            '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+
+        // 初始缩放级别
+        let zoom = 1;
+        let frame = 0;
+
+        // 平均帧率
+        let avgFps = 0;
+        let frameCount = 0;
+
+        // 字体大小
+        const fontSize = 8;
+
+        // 字符渲染
+        function renderMandelbrot(xmin, xmax, ymin, ymax) {
+            const width = canvas.width;
+            const height = canvas.height;
+            const charAspect = 1 / 1.5;
+            const charWidth = fontSize * charAspect;
+            const charHeight = fontSize;
+            const charCountX = Math.floor(width / charWidth);
+            const charCountY = Math.floor(height / charHeight);
+
+            const mandelbrotChars = [];
+            for (let y = 0; y < charCountY; y++) {
+                for (let x = 0; x < charCountX; x++) {
+                    const charX = xmin + (xmax - xmin) * x / charCountX;
+                    const charY = ymin + (ymax - ymin) * y / charCountY;
+                    mandelbrotChars.push(calculateMandelbrot(charX, charY, xmin, xmax, ymin, ymax));
+                }
+            }
+
+            ctx.clearRect(0, 0, width, height);
+            for (let i = 0; i < mandelbrotChars.length; i++) {
+                const charCode = mandelbrotChars[i];
+                const charX = (i % charCountX) * charWidth;
+                const charY = Math.floor(i / charCountX) * charHeight;
+                ctx.fillStyle = colors[charCode % colors.length];
+                ctx.fillText(poem[charCode % poem.length], charX, charY);
+            }
+        }
+
+        // 计算Mandelbrot Set字符
+        function calculateMandelbrot(x, y, xmin, xmax, ymin, ymax) {
+            let zx = 0;
+            let zy = 0;
+            let cx = x * (xmax - xmin) / width + xmin;
+            let cy = y * (ymax - ymin) / height + ymin;
+            let iterations = 0;
+            for (; iterations < maxIterations && (zx * zx + zy * zy) < 4; iterations++) {
+                const temp = zx * zx - zy * zy + cx;
+                zy = 2 * zx * zy + cy;
+                zx = temp;
+            }
+            return iterations;
+        }
+
+        // 渲染
+        function render() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const xmin = -2.5;
+            const xmax = 1.5;
+            const ymin = -1.5;
+            const ymax = 1.5;
+
+            const centerX = -0.7435;
+            const centerY = 0.128;
+
+            const scaleX = Math.pow(zoom, 2) * 1.5;
+            const scaleY = Math.pow(zoom, 2) * 1.5;
+            const offsetX = centerX - (width / 2) * (xmax - xmin) / width;
+            const offsetY = centerY - (height / theight) * (ymax - ymin) / height;
+
+            for (let y = 0; y < height; y += fontSize) {
+                for (let x = 0; x < width; x += fontSize) {
+                    const charCode = calculateMandelbrot(x, y, xmin, xmax, ymin, ymax);
+                    ctx.fillStyle = colors[charCode % colors.length];
+                    ctx.fillText(poem[charCode % poem.length], x, y);
+                }
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        // 初始化
+        canvas.addEventListener('click', () => {
+            zoom *= 0.995;
+            render();
+        });
+
+        // 事件监听
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // 帧率统计
+        let lastTime = 0;
+        let frameCount = 0;
+        function updateFps() {
+            const now = performance.now();
+            const deltaTime = (now - lastTime) / 1000;
+            lastTime = now;
+            const fps = Math.floor(1 / deltaTime);
+            avgFps += (fps - avgFps) / 10;
+            document.getElementById('fps-indicator').innerHTML =
+                `FPS: ${fps.toFixed(1)}<br>AVG FPS: ${avgFps.toFixed(1)}<br>当前帧: ${frame}/200`;
+            frame++;
+        }
+
+        // 开始渲染
+        function startRender() {
+            const startTime = performance.now();
+            render();
+            const now = performance.now();
+            requestAnimationFrame(startRender);
+        }
+
+        // 计算mandelbrot set
+        function calculateMandelbrot(x, y, xmin, xmax, ymin, ymax) {
+            let zx = 0;
+            let zy = 0;
+            let cx = xmin + (xmax - xmin) * x / width;
+            let cy = ymin + (ymax - ymin) * y / height;
+            let iterations = 0;
+            for (; iterations < maxIterations && (zx * zx + zy * zy) < 4; iterations++) {
+                const temp = zx * zx - zy * zy + cx;
+                zy = 2 * zx * zy + cy;
+                zx = temp;
+            }
+            return iterations;
+        }
+
+        // 渲染Mandelbrot Set
+        function render() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const xmin = -2.5;
+            const xmax = 1.5;
+            const ymin = -1.5;
+            const ymax = 1.5;
+
+            // 清空画布
+            ctx.clearRect(0, 0, width, height);
+
+            // 渲染字符
+            for (let y = 0; y < height; y += fontSize) {
+                for (let x = 0; x < width; x += fontSize) {
+                    const charCode = calculateMandelbrot(x, y, xmin, xmax, ymin, ymax);
+                    ctx.fillStyle = colors[charCode % colors.length];
+                    ctx.fillText(poem[charCode % poem.length], x, y);
+                }
+            }
+        }
+
+        // 入口
+        startRender();
+    </script>
+</body>
+
+</html>

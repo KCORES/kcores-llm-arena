@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>太阳系动画</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 24px;
+            font-family: monospace;
+            color: black;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fps-counter"></div>
+
+    <script>
+        // 获取canvas元素
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsCounter = document.getElementById('fps-counter');
+
+        // 设置canvas全屏
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 定义天体
+        const sun = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 30,
+            colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'],
+        };
+
+        const planets = [
+            {
+                name: '水星',
+                radius: 2,
+                orbit: 50,
+                speed: 0.1,
+                colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'],
+            },
+            {
+                name: '金星',
+                radius: 5,
+                orbit: 80,
+                speed: 0.05,
+                colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'],
+            },
+            {
+                name: '地球',
+                radius: 5,
+                orbit: 110,
+                speed: 0.033,
+                colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'],
+            },
+            {
+                name: '火星',
+                radius: 3,
+                orbit: 140,
+                speed: 0.025,
+                colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'],
+            },
+            {
+                name: '木星',
+                radius: 10,
+                orbit: 170,
+                speed: 0.01,
+                colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'],
+            },
+            {
+                name: '土星',
+                radius: 8,
+                orbit: 200,
+                speed: 0.008,
+                colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'],
+            },
+            {
+                name: '天王星',
+                radius: 6,
+                orbit: 230,
+                speed: 0.005,
+                colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'],
+            },
+            {
+                name: '海王星',
+                radius: 5,
+                orbit: 260,
+                speed: 0.003,
+                colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'],
+            },
+            {
+                name: '冥王星',
+                radius: 2,
+                orbit: 290,
+                speed: 0.002,
+                colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'],
+            },
+        ];
+
+        // 初始化角度
+        let angles = planets.map(() => 0);
+
+        // 初始化地球日计数器
+        let earthDays = 0;
+
+        // 初始化FPS计数器
+        let fps = 0;
+        let avgFps = 0;
+        let lastTime = 0;
+
+        // 离屏canvas用于静态元素（轨道线）
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = canvas.width;
+        offscreenCanvas.height = canvas.height;
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+
+        // 绘制静态元素（轨道线）
+        for (const planet of planets) {
+            offscreenCtx.beginPath();
+            offscreenCtx.arc(sun.x, sun.y, planet.orbit, 0, 2 * Math.PI);
+            offscreenCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            offscreenCtx.lineWidth = 1;
+            offscreenCtx.stroke();
+        }
+
+        // 主循环
+        function animate(time) {
+            // 计算FPS
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            fps++;
+            avgFps = (avgFps * (deltaTime - 1) + fps) / deltaTime;
+            fpsCounter.innerText = `FPS: ${fps} AVG FPS: ${avgFps.toFixed(2)} Earth Day: ${earthDays.toFixed(2)}`;
+
+            // 重置FPS计数器
+            if (deltaTime > 1000) {
+                fps = 0;
+            }
+
+            // 更新地球日计数器
+            earthDays += 0.01;
+
+            // 更新行星角度
+            for (let i = 0; i < planets.length; i++) {
+                angles[i] += planets[i].speed * 0.01;
+            }
+
+            // 绘制离屏canvas
+            ctx.drawImage(offscreenCanvas, 0, 0);
+
+            // 绘制太阳
+            ctx.beginPath();
+            ctx.arc(sun.x, sun.y, sun.radius, 0, 2 * Math.PI);
+            ctx.fillStyle = sun.colors[0];
+            ctx.fill();
+            ctx.fillStyle = sun.colors[1];
+            ctx.fillRect(sun.x - sun.radius / 2, sun.y - sun.radius / 2, sun.radius, sun.radius);
+            ctx.fillStyle = sun.colors[2];
+            ctx.fillRect(sun.x - sun.radius / 4, sun.y - sun.radius / 4, sun.radius / 2, sun.radius / 2);
+            ctx.fillStyle = sun.colors[3];
+            ctx.fillRect(sun.x - sun.radius / 4, sun.y + sun.radius / 4, sun.radius / 2, sun.radius / 2);
+
+            // 绘制行星
+            for (let i = 0; i < planets.length; i++) {
+                const planet = planets[i];
+                const x = sun.x + Math.cos(angles[i]) * planet.orbit;
+                const y = sun.y + Math.sin(angles[i]) * planet.orbit;
+
+                ctx.beginPath();
+                ctx.arc(x, y, planet.radius, 0, 2 * Math.PI);
+                ctx.fillStyle = planet.colors[0];
+                ctx.fill();
+                ctx.fillStyle = planet.colors[1];
+                ctx.fillRect(x - planet.radius / 2, y - planet.radius / 2, planet.radius, planet.radius);
+                ctx.fillStyle = planet.colors[2];
+                ctx.fillRect(x - planet.radius / 4, y - planet.radius / 4, planet.radius / 2, planet.radius / 2);
+                ctx.fillStyle = planet.colors[3];
+                ctx.fillRect(x - planet.radius / 4, y + planet.radius / 4, planet.radius / 2, planet.radius / 2);
+
+                // 绘制标签
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = 'black';
+                ctx.fillText(`[${planet.name}]`, x + planet.radius + 10, y - planet.radius);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate(0);
+    </script>
+</body>
+
+</html>

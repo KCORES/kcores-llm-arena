@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Set Animation</title>
+    <style>
+        /* 全屏展示动画 */
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* FPS 指示器样式 */
+        .fps-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 5px;
+            padding: 5px;
+            font-size: 12px;
+            color: black;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="fps-indicator" id="fps-indicator">FPS: <span id="fps">0</span> AVG FPS: <span id="avg-fps">0</span>
+        CURRENT FRAME: <span id="current-frame">0/200</span></div>
+
+    <script>
+        // 获取 canvas 元素
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 设置 canvas 全屏
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 李白的诗《静夜思》
+        const poem = '床前明月光疑是地上霜举头望明月低头思故乡';
+
+        // 去重并保留原有的字符顺序
+        const chars = [...new Set(poem)].filter(char => char.match(/[a-zA-Z\u4e00-\u9fa5]/));
+
+        // Mandelbrot Set 字符颜色候选集
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7',
+            '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9',
+            '#68699b', '#706caa', '#5654a2', '#4d4398',
+            '#4a488e', '#274a78', '#2a4073', '#223a70',
+            '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ];
+
+        // Mandelbrot Set 参数
+        let xmin = -2.5;
+        let xmax = 1.5;
+        let ymin = -1.5;
+        let ymax = 1.5;
+        const maxIterations = 100;
+
+        // 动画参数
+        let frame = 0;
+        let lastTime = 0;
+        let avgFps = 0;
+        let frameCount = 0;
+
+        // 渲染函数
+        function render() {
+            const currentTime = performance.now();
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+
+            // 计算 FPS
+            const fps = 1000 / deltaTime;
+            document.getElementById('fps').innerText = fps.toFixed(2);
+
+            // 更新平均 FPS
+            frameCount++;
+            avgFps = (avgFps * (frameCount - 1) + fps) / frameCount;
+            if (frameCount > 200) {
+                avgFps = (avgFps * 199 + fps) / 200;
+                frameCount = 200;
+            }
+            document.getElementById('avg-fps').innerText = avgFps.toFixed(2);
+
+            // 更新当前帧序号
+            document.getElementById('current-frame').innerText = `${frame}/200`;
+
+            // 渲染 Mandelbrot Set
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const scale = 0.995 ** frame;
+            const newXmin = -0.743862;
+            const newXmax = -0.128123;
+            const newYmin = 0.128123;
+            const newYmax = 0.743862;
+            xmin = newXmin + (xmin - newXmin) * scale;
+            xmax = newXmax + (xmax - newXmax) * scale;
+            ymin = newYmin + (ymin - newYmin) * scale;
+            ymax = newYmax + (ymax - newYmax) * scale;
+
+            for (let x = 0; x < canvas.width; x += 8) {
+                for (let y = 0; y < canvas.height; y += 8) {
+                    const zx = xmin + (xmax - xmin) * x / canvas.width;
+                    const zy = ymin + (ymax - ymin) * y / canvas.height;
+                    const iteration = getIteration(zx, zy);
+
+                    if (iteration === maxIterations) {
+                        // Main cardioid and period bulbs 部分留空
+                        continue;
+                    }
+
+                    const charIndex = iteration % chars.length;
+                    const char = chars[charIndex];
+                    const colorIndex = Math.floor((iteration / maxIterations) * (colors.length - 1));
+                    const color = colors[colorIndex];
+
+                    ctx.font = '8px monospace';
+                    ctx.fillStyle = color;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText(char, x, y);
+                }
+            }
+
+            frame++;
+            if (frame > 200) {
+                frame = 0;
+                xmin = -2.5;
+                xmax = 1.5;
+                ymin = -1.5;
+                ymax = 1.5;
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        // 获取迭代次数
+        function getIteration(zx, zy) {
+            let cx = zx;
+            let cy = zy;
+            let iteration = 0;
+
+            while (cx * cx + cy * cy < 4 && iteration < maxIterations) {
+                const temp = cx * cx - cy * cy + zx;
+                cy = 2 * cx * cy + zy;
+                cx = temp;
+                iteration++;
+            }
+
+            return iteration;
+        }
+
+        render();
+    </script>
+</body>
+
+</html>
