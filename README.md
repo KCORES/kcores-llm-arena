@@ -15,12 +15,14 @@ KCORES LLM Arena - KCORES 大模型竞技场
 
 ## 真实世界编程能力测试 
 
-- version: **2025-03-26**
+- version: **2025-04-06**
 - Winner: **👑Gemini-2.5-Pro-Experimental-03-25**
 
+### 评测内容
+
+本评测包含4个测试大项, 66个小项 (题目), 测试内容包含 Python, Javascript, HTML, CSS, Canvas, WebWorker, 计算机图形学, 性能优化, 需求还原, 字符串处理, 数学, 物理, 创意等等
+
 ### 结论
-
-
 
 目前最好的编程大模型是什么？**👑Gemini-2.5-Pro-Experimental-03-25** 
 
