@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        /* 全屏 canvas 设置 */
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+            height: 100%;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            image-rendering: pixelated;
+        }
+
+        #info {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            font-family: monospace, monospace;
+            font-size: 14px;
+            color: black;
+            background: rgba(255 255 255 / 0.7);
+            border-radius: 8px;
+            padding: 6px 12px;
+            user-select: none;
+            line-height: 1.3;
+            min-width: 220px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <div id="info">
+        FPS: <span id="fps">0</span><br />
+        AVG FPS: <span id="avgfps">-</span><br />
+        CURRENT FRAME: <span id="currentframe">0/200</span>
+    </div>
+    <script>
+        (() => {
+            // ---- 诗词文本 ----
+            // 李白《静夜思》全文 (无标点)
+            // 床前明月光，疑是地上霜。举头望明月，低头思故乡。
+            // 去标点去重保留顺序：
+            const rawPoem = '床前明月光疑是地上霜举头望明月低头思故乡';
+            // 去重且保留顺序：
+            function uniqueChars(s) {
+                const set = new Set();
+                const arr = [];
+                for (const c of s) {
+                    if (!set.has(c)) {
+                        set.add(c);
+                        arr.push(c);
+                    }
+                }
+                return arr;
+            }
+            const poemChars = uniqueChars(rawPoem);
+            // console.log(poemChars); // ['床','前','明','月','光','疑','是','地','上','霜','举','头','望','低','思','故','乡']
+
+            // 颜色集，从浅到深 (16色)
+            const colors = [
+                '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7',
+                '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9',
+                '#68699b', '#706caa', '#5654a2', '#4d4398',
+                '#4a488e', '#274a78', '#2a4073', '#223a70',
+                '#192f60', '#1c305c', '#17184b', '#0f2350'
+            ];
+
+            // 需求：最外围字符对应最深的颜色，即颜色数组最后一个颜色，依次向内变浅。
+            // 因此，深色在 colors 末尾，浅色在开头，需要配合色深对应颜色索引做映射
+
+            // 字符体大小8px，无间距，排列8px
+            // 计算 canvas 格子列数和行数
+            // 动画初始 Mandelbrot size 是屏幕50%
+            // canvas 尺寸：width,height（等于屏幕物理像素）
+            // 每个格子占8x8 px，cols = floor(width/8), rows = floor(height/8)
+            // 初始绘制 Mandelbrot 区域是屏幕50%大小，居中
+            // 放大操作：每帧放大0.5% (即 scale *= 1.005)
+            // 渲染200帧，然后重置循环渲染
+
+            // Main cardioid and period bulbs 部分留空（不渲染字符），其定义是：
+            // 该部分为: 
+            // if point c is in main cardioid or period-2 bulbs, omit draw
+            // cardioid formula: p = sqrt((x-0.25)^2 + y^2)
+            // point is in main cardioid if x < p - 2*p*p + 0.25
+            // bulb (period 2) defined by (x+1)^2 + y^2 < 1/16
+
+            // 黑色背景，无绘制区域为透明黑
+
+            // 中心点(焦点): 交界处，也即主心脏和周期灯泡交界处附近
+            // 常用 Mandelbrot 集心脏中心为 (-0.75,0)
+            // 主心脏和周期灯泡交界处大约取 (-0.1011, 0)
+            // 参考资料说主心脏中心 x=-0.75，左边1号灯泡大约在(-1,0)
+            // 周期 2 球心位置是 (-1, 0)
+            // 交界近似在 (-0.101, 0)?
+
+            // 根据要求中心点固定为 交界处，参考资料，典型坐标:
+            // http://paulbourke.net/fractals/mandelbrot/
+            // 主心脏轮廓判定从 p = sqrt((x - 0.25)^2 + y^2)
+            // 周期灯泡判定圆心在 (-1,0), 半径1/4
+
+            // 以 (-0.1011, 0) 为中心点
+
+            // plan:
+            //  - 维护转换函数： 画布格子(i,j) -> 复数坐标 (x,y)
+            //  - scale: 初始宽度对应复数域宽度;
+            //  -   因为终极画布大小任意，我们需要复数坐标映射区域在水平方向具体大小
+            //  -   
+            // 动画帧: f = 0..199
+            // scale_f = initScale * (1.005)^f
+
+            const MAX_FRAMES = 200;
+            const FONT_SIZE = 8; // px
+            const CHAR_W = FONT_SIZE;
+            const CHAR_H = FONT_SIZE;
+
+            const canvas = document.getElementById('c');
+            const ctx = canvas.getContext('2d');
+            // 设置字体 monospace, 8px
+            ctx.font = `${FONT_SIZE}px monospace`;
+            ctx.textBaseline = 'top';
+
+            // FPS 监测与UI
+            const fpsElem = document.getElementById('fps');
+            const avgfpsElem = document.getElementById('avgfps');
+            const currentframeElem = document.getElementById('currentframe');
+
+            let width, height, cols, rows;
+            let devicePixelRatio = window.devicePixelRatio || 1;
+            function resize() {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                canvas.style.width = width + 'px';
+                canvas.style.height = height + 'px';
+                // 实际canvas分辨率要乘以dpr
+                canvas.width = width * devicePixelRatio;
+                canvas.height = height * devicePixelRatio;
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.scale(devicePixelRatio, devicePixelRatio);
+                cols = Math.floor(width / CHAR_W);
+                rows = Math.floor(height / CHAR_H);
+            }
+            resize();
+            window.addEventListener('resize', resize);
+
+            // Mandelbrot 参数设置
+            // 初始复数区域宽度（水平）是屏幕物理宽度的50%，屏幕50%对应字幕区域，是字符数x字符宽度
+            // cols * CHAR_W 是 canvas 水平像素宽度
+            // 复数域从 centerX-scale/2  到 centerX+scale/2
+            // 初始 scale 取 复数平面宽度 对应 屏幕宽度50%
+
+            // 取中心点为 主心脏和周期灯泡交界处
+            // 主心脏公式参考：
+            // https://en.wikipedia.org/wiki/Mandelbrot_set#Main_cardioid_and_period_bulbs
+            // 交界部分近似点
+            const centerX = -0.1011;
+            const centerY = 0;
+
+            // 我们希望初始 mandelbrot 主图大小占屏幕50%
+            // 水平复数宽度 scale 初始值
+            // 宽度是字符宽*cols * 0.5
+            // 但按需求动画初始 mandelbrot set 主要图形初始大小为屏幕50%
+            // 这50%应该是指复数域横向宽度占屏幕横向50%
+            // 屏幕的字符格为 cols，全部字符格表示整屏
+            // 我们绘制 mandelbrot 区域占屏幕 cols*0.5 宽 
+            // scale 对应复数横向距离
+            // 则 scale 初始宽度对应半屏幕字符数*CHAR_W 的宽度 -> 也就是使用 cols 字符格 水平方向 50%
+            // 选择将复数横坐标范围初始化为scale = 3.0 (一般 Mandelbrot横坐标约 -2.5~1.0 共3.5范围)
+            // 缩放成适合窗口大小
+            // 为精确对应 50% 屏幕大小:
+            // 画布 一格对应 deltaX:
+            // deltaX = scale / (cols * 0.5) // 因为放大 从50% -> 100%? ？
+            // 这里稍微处理(找合理初始scale)
+            // 选初始scale=3.0 与 cols配合调节，保证初始 mandelbrot大小占屏幕50%，视作横向占50%的字符宽
+
+            // 实际我们需要 scale 和 deltaX 配合。
+            // 以 cols*0.5 * CHAR_W 为半屏幕宽度(屏幕宽度的50%)
+            // 并维持屏幕显示一半宽度对应复数横坐标区间大小 scale
+            // 以兼容放大需要
+
+            // 计算方式：
+            // 复数坐标范围 X： scale (初始)
+            // 画布字符格宽度 cols
+            // 每格对应复数坐标为 deltaX = scale / (cols*0.5)
+            // 实际横向字符数占一半 cols*0.5 表示绘制区域宽度
+            // 剩余左右区域为空白或者字符不画画（其实本动画是给满屏画布做支持）
+
+            // 但要求全屏，且 mandelbrot 初始占屏幕50%，居中
+            // 这里方案：
+            //   我们画布画满字符格，mandelbrot区域宽度为 cols*0.5 格，居中绘制 mandelbrot
+            //   其余字符格可以绘制空格或者白色空白，无字符
+            // 为保证字符对应，还是全屏渲染 mandelbrot，但判定落点是否在 mandelbrot 主要图形范围内（为了背景或者空白留空）
+
+            // 总结方案：
+
+            // 画布排列：
+            // cols列
+            // rows行
+
+            // mandelbrot 复数区域范围 横向：
+            // 按 cols*0.5 为 mandelbrot 图宽度 
+            // scale 初始复数域宽度等于 mandelbrot 区域宽度所对应
+            // 这保证 mandelbrot 图占屏幕一半宽度
+
+            // 放大操作：
+            // scale 每帧缩小 scale *= 1/1.005 ≈ 0.995 ，因为scale越小，放大越大
+
+            // 注意题目说“每帧放大0.5%”，放大是缩小复数区间，而屏幕像素固定，放大复数只减小范围。
+            // 复数范围scale从高到低逐渐变小，比例为：(1 - 0.005)^f = 0.995^f
+            // 放大倍数约 1.005^f
+
+            // -------------------------------------------------------
+
+            // 因此：
+            // scale0 = S
+            // scale_f = scale0 * (0.995)^f
+
+            // 初始 scale0 固定，根据 cols 计算:
+            // mandelbrot 区域宽度对应 50%画面宽度:
+            // mandelbrot 区域字符宽度 = cols * 0.5
+            // 以横向复数坐标范围 3.0 作为初始，校准一下
+
+            // 计算deltaX:
+            // deltaX = scale / (cols*0.5)
+
+            // 细节：画布全屏显示，每个字符都有对应复数坐标
+            // 中心点在 mandelbrot 中心 => 居中后的坐标翻译
+            // 即索引 i 从 0 .. cols-1 对应复数坐标:
+            // x = centerX + (i - centerIndex) * deltaX
+            // 其中 centerIndex = cols / 2
+            // i=centerIndex 对应复数横坐标 centerX。
+
+            // 纵向复数范围:
+            // 画布垂直行数 rows
+            // 纵向复数区间大小假设保持和横向缩放比例相同(per aspect ratio)
+            // 复数纵向范围 = scale * (rows*CHAR_H)/(cols*CHAR_W*0.5) ？？较复杂
+
+            // 简单方案，复数纵向范围根据长宽比匹配：
+            // ratio = rows / cols
+            // mandelbrot 垂直 scale height = scale * rows / (cols*0.5) 
+            // 更合理的是根据横向复数范围 scale，复数纵向范围 = scale * rows / (cols * 0.5)
+
+            // 由于 mandelbrot 集横向复数域通常范围比纵向更宽，画布纵向比例也匹配
+
+            // 纵向通过相应 deltaY = vertical_scale / rows
+            // vertical_scale = scale * rows / (cols*0.5)
+
+            // 坐标映射：
+            // 对每一个字符格 (i,j):
+            // x = centerX + (i - cols/2) * deltaX
+            // y = centerY + (j - rows/2) * deltaY
+
+            // deltaX = scale / (cols*0.5)
+            // deltaY = vertical_scale / rows
+
+            // vertical_scale = deltaX * rows = scale / (cols*0.5) * rows
+
+            // 实际deltaY = scale/(cols*0.5) * (rows/rows) = scale/(cols*0.5)
+
+            // 垂直deltaY=deltaX 保持长宽比
+            // 为避免变形，deltaY 应与 deltaX 一致
+            // 则 vertical_scale = deltaX * rows
+
+            // 因为字符宽高相同，所以屏幕物理像素纵横比1:1，可简单用 deltaX = deltaY
+
+            // 综上
+            // deltaX = deltaY = scale / (cols*0.5)
+
+            // 替代方案：
+
+            // 我们定义单位复数距离对应字符格数为 cols*0.5，但是这会造成纵向显著变形，忽略先。
+
+            // 关于主心脏 + 周期灯泡部分留空判定：
+            // 计算各点是否归属于主心脏或周期2灯泡：
+            // https://en.wikipedia.org/wiki/Mandelbrot_set#Main_cardioid_and_period_bulbs
+            // cardioid: p = sqrt((x-0.25)^2 + y^2)
+            // if x < p - 2 p^2 + 0.25 return true (inside main cardioid)
+            // bulb: (x+1)^2 + y^2 < 1/16 (inside period 2 bulb)
+
+            // 如果点在主心脏或周期灯泡区域则该字符格：" " 空字符
+
+            // 计算迭代深度判断是否属于Mandelbrot集合：
+            // 主体算法迭代:
+            // 迭代次数 maxIter = 30-50，考虑性能取 30
+            // |z| > 2判定逃逸
+            // 迭代次数越大说明越接近集合内部，颜色越浅（高迭代越浅）
+            // 我们映射迭代次数的颜色从外圈（迭代数低、逃逸快）到内圈（迭代次数多、未逃逸或者接近最大迭代数）
+
+            // 字符来自诗词无重复字符的集合，循环使用
+
+            // 颜色映射：
+            // 迭代数或距离越大，颜色越深, 由深色到浅色
+            // 题目：最外围字符使用最深的颜色然后依次变浅
+            // 因此迭代数（escapeTime）越小对应颜色越深，越大迭代次数对应颜色越浅
+            // 未逃逸(达到最大迭代次数)对应最浅颜色
+
+            // 颜色数组包含20色，适用范围，映射迭代次数 -> colors索引反向分布
+
+            // ---------------------------------------
+
+            // 实现开始：
+
+            const MAX_ITER = 30;
+
+            // 转换 i,j -> mandelbrot 坐标
+            // scale0 初始复数域宽度
+            // scale_f 随帧缩放
+            // 设定初始 scale0: 3.2 (大致适合对屏幕50%宽度)
+
+            const scale0 = 3.2;
+
+            // 每帧 scale 缩小 0.5%
+            const scaleDownPerFrame = 0.995;
+
+            // 字符序列循环索引
+            let charIndex = 0;
+
+            // 用于FPS计算
+            let lastTime = performance.now();
+            let frameCount = 0;
+            let fps = 0;
+
+            // 平均FPS相关
+            let fpsSum = 0;
+            let avgFpsFrameCount = 0;
+            let avgFps = 0;
+
+            // 性能优化: 由于一帧字符数较多，用离屏canvas缓存字符，改用绘制单字符图像，用fillText绘制会有少许效率损失
+            // 这里由于需求显示使用单个canvas和单个文件，且字符简单，使用 fillText。
+
+            // 动画主循环
+            function mandelbrotCharEscape(cx, cy) {
+                // 判定主心脏和周期灯泡，留空不画字符
+                // cardioid check:
+                // p = sqrt( (x-0.25)^2 + y^2 )
+                // if x < p-2p^2 + 0.25 => 主心脏区域
+                let x = cx;
+                let y = cy;
+                let p = Math.sqrt((x - 0.25) * (x - 0.25) + y * y);
+                if (x < p - 2 * p * p + 0.25) return null;
+                // bulb check:
+                if (((x + 1) * (x + 1) + y * y) < 0.0625) return null;
+
+                // 迭代检查
+                let zx = 0, zy = 0, zx2 = 0, zy2 = 0;
+                let iter = 0;
+                for (; iter < MAX_ITER; iter++) {
+                    zy = 2 * zx * zy + y;
+                    zx = zx2 - zy2 + x;
+                    zx2 = zx * zx;
+                    zy2 = zy * zy;
+                    if (zx2 + zy2 > 4) break;
+                }
+                return iter;
+            }
+
+            // 计算颜色索引从外到内：迭代次数越少越深色
+            // colors: 最深颜色在后colors[colors.length-1], 最浅颜色在colors[0]
+            // MAX_ITER = 30, colors.length = 20
+            // iter < MAX_ITER：
+            // 颜色索引 = floor((colors.length-1) * (1 - iter / MAX_ITER))
+            // iter == MAX_ITER(未逃逸) -> 最浅颜色 index 0
+            // iter == 0 (最快逃逸) -> 颜色 index max (深色)
+
+            function iterToColor(iter) {
+                if (iter === null) return null; // 空，绘制空格
+                if (iter === MAX_ITER) return 0;
+                let idx = Math.floor((colors.length - 1) * (1 - iter / MAX_ITER));
+                if (idx < 0) idx = 0;
+                if (idx >= colors.length) idx = colors.length - 1;
+                return idx;
+            }
+
+            // 每帧渲染函数
+            // render frame f (0..199)
+            // scale_f = scale0 * (scaleDownPerFrame)^f
+            // 全屏绘制，每格画8x8字符
+            // 优化措施：一次for循环，避免频繁读取dom，使用requestAnimationFrame
+
+            function renderFrame(f) {
+                const scale = scale0 * Math.pow(scaleDownPerFrame, f);
+                const delta = scale / (cols * 0.5);
+                // 画布清空填充黑色背景
+                ctx.clearRect(0, 0, width, height);
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, width, height);
+
+                // 遍历字符格
+                // 字符无间距排列，左上角定位  x=i*CHAR_W, y=j*CHAR_H
+
+                // pdf note: 用 fillText 进行绘制，字体已设为 "8px monospace"
+                // 由于字符颜色不同，每次改变 fillStyle，性能一般，尝试每行逐字符绘制
+
+                // 由于性能，先预构造一行字符串，批量绘制。
+
+                // 因字符颜色需区分，不同字符不同颜色，不利于批量绘制成字符串；故逐字符绘制。
+
+                // i: 0..cols-1, j: 0..rows-1
+
+                // 中心字符格坐标：
+                const cx = cols / 2;
+                const cy = rows / 2;
+
+                // 当前帧的字符索引起始点（循环诗词）
+                let charPos = 0;
+
+                for (let j = 0; j < rows; j++) {
+                    let y = j * CHAR_H;
+                    for (let i = 0; i < cols; i++) {
+                        const x = i * CHAR_W;
+                        // 转复数坐标
+                        const rx = centerX + (i - cx) * delta;
+                        const ry = centerY + (j - cy) * delta;
+                        const iter = mandelbrotCharEscape(rx, ry);
+                        if (iter === null) {
+                            // 主心脏或周期灯泡区域，留空
+                            continue;
+                        }
+                        // 转换颜色索引
+                        const colorIdx = iterToColor(iter);
+                        if (colorIdx === null) continue;
+                        const color = colors[colorIdx];
+                        ctx.fillStyle = color;
+                        // 取对应字符，循环诗词字符集
+                        const ch = poemChars[charPos % poemChars.length];
+                        charPos++;
+                        ctx.fillText(ch, x, y);
+                    }
+                }
+            }
+
+            // FPS及动画状态维护
+            let frame = 0;
+            let lastFpsTime = performance.now();
+            let frameTimes = [];
+
+            function updateFPS() {
+                const now = performance.now();
+                const delta = now - lastFpsTime;
+                fps = delta > 0 ? 1000 / delta : 0;
+                lastFpsTime = now;
+                // 维护平均fps数据
+                frameTimes.push(fps);
+                if (frameTimes.length > MAX_FRAMES) frameTimes.shift();
+                avgFps = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+                fpsElem.textContent = fps.toFixed(1);
+                avgfpsElem.textContent = avgFps.toFixed(1);
+                currentframeElem.textContent = `${frame + 1}/${MAX_FRAMES}`;
+            }
+
+            // 主动画循环，使用requestAnimationFrame
+            function loop() {
+                const startTime = performance.now();
+                renderFrame(frame);
+                const renderTime = performance.now() - startTime;
+                updateFPS();
+
+                frame++;
+                if (frame >= MAX_FRAMES) {
+                    frame = 0;
+                    // Average FPS统计重置由avgFps持续维护，无需处理
+                }
+
+                requestAnimationFrame(loop);
+            }
+
+            loop();
+
+        })();
+    </script>
+</body>
+
+</html>

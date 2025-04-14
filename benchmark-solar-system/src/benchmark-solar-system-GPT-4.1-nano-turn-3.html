@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>HTML5 Canvas太阳系动画</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarCanvas"></canvas>
+    <script>
+        (function () {
+            const canvas = document.getElementById('solarCanvas');
+            const ctx = canvas.getContext('2d');
+
+            // 离屏canvas：用于绘制轨道
+            const offscreenCanvas = document.createElement('canvas');
+            const offCtx = offscreenCanvas.getContext('2d');
+
+            let width = window.innerWidth;
+            let height = window.innerHeight;
+            let centerX = width / 2;
+            let centerY = height / 2;
+
+            // 星球定义
+            const planets = [
+                { name: '水星', radius: 57, size: 4, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'] },
+                { name: '金星', radius: 108, size: 6, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'] },
+                { name: '地球', radius: 150, size: 6, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'] },
+                { name: '火星', radius: 228, size: 5, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'] },
+                { name: '木星', radius: 778, size: 10, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'] },
+                { name: '土星', radius: 1430, size: 9, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'] },
+                { name: '天王星', radius: 2870, size: 8, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'] },
+                { name: '海王星', radius: 4500, size: 8, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'] },
+                { name: '冥王星', radius: 5900, size: 4, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'] },
+            ];
+
+            // 太阳
+            const sun = {
+                name: '太阳',
+                size: 20,
+                colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22']
+            };
+
+            // 时间和动画
+            let lastTime = performance.now();
+            let fps = 0;
+            let fpsCount = 0;
+            let fpsTimer = 0;
+            let avgFps = 0;
+            let frameCount = 0;
+
+            // 轨道绘制: 离屏canvas
+            function drawOrbits() {
+                offCtx.clearRect(0, 0, width, height);
+                offCtx.save();
+                offCtx.translate(centerX, centerY);
+                offCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+                offCtx.lineWidth = 1;
+                // 绘制轨道
+                for (let p of planets) {
+                    offCtx.beginPath();
+                    offCtx.arc(0, 0, p.radius, 0, Math.PI * 2);
+                    offCtx.stroke();
+                }
+                offCtx.restore();
+            }
+
+            // 初始化
+            function resize() {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                centerX = width / 2;
+                centerY = height / 2;
+                canvas.width = width;
+                canvas.height = height;
+                offscreenCanvas.width = width;
+                offscreenCanvas.height = height;
+                drawOrbits();
+            }
+
+            window.addEventListener('resize', resize);
+            resize();
+
+            // 使用Web Worker做位置计算
+            // 定义位置数组
+            let planetAngles = new Array(planets.length).fill(0);
+            const workerCode = `
+    let planets;
+    let earthDaySeconds = 8640; // 1秒=10地球日
+    let startTime = null;
+
+    self.onmessage = function(e) {
+      if (e.data.type === 'init') {
+        planets = e.data.planets;
+        startTime = Date.now();
+      } else if (e.data.type === 'update') {
+        const now = Date.now();
+        const delta = (now - startTime) / 1000; // 秒
+        const earthDaysPassed = delta * 10; // 一秒10地球日
+        const angles = [];
+        for (let p of planets) {
+          // 公转角度：一周为365天
+          const angle = ((earthDaysPassed * 2 * Math.PI) / 365) % (2 * Math.PI);
+          angles.push(angle);
+        }
+        self.postMessage({angles: angles});
+      }
+    };
+  `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const worker = new Worker(URL.createObjectURL(blob));
+            worker.postMessage({ type: 'init', planets: planets });
+
+            let currentAngles = new Array(planets.length).fill(0);
+
+            // 计时器和FPS
+            let earthDaysCount = 0;
+
+            function update(deltaTime) {
+                // 更新位置
+                worker.postMessage({ type: 'update' });
+                // 其他逻辑...
+            }
+
+            worker.onmessage = function (e) {
+                currentAngles = e.data.angles;
+            };
+
+            function draw() {
+                ctx.clearRect(0, 0, width, height);
+
+                // 绘制轨道在离屏canvas
+                ctx.drawImage(offscreenCanvas, 0, 0);
+
+                // 太阳
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.beginPath();
+                ctx.arc(0, 0, sun.size, 0, Math.PI * 2);
+                ctx.fillStyle = sun.colors[0];
+                ctx.fill();
+
+                // 画太阳标签
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(sun.name, 0, sun.size + 4);
+                ctx.restore();
+
+                // 绘制行星
+                for (let i = 0; i < planets.length; i++) {
+                    const p = planets[i];
+                    const angle = currentAngles[i];
+                    const x = centerX + p.radius * Math.cos(angle);
+                    const y = centerY + p.radius * Math.sin(angle);
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+                    ctx.fillStyle = p.colors[Math.floor(Math.random() * p.colors.length)};
+                ctx.fill();
+
+                // 面向相机标签
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(p.name, 0, p.size + 4);
+                ctx.restore();
+
+                // 保存角度更新 (已在worker中)
+            }
+
+            // 计数器显示
+            drawCounters();
+        }
+
+  // FPS和地球日
+  let earthDayCount = 0;
+
+        function drawCounters() {
+            const now = performance.now();
+            // 计算FPS
+            fpsCount++;
+            fpsTimer += (now - lastTime);
+            if (fpsTimer >= 1000) {
+                fps = fpsCount;
+                fpsCount = 0;
+                fpsTimer %= 1000;
+                // 计算平均FPS
+            }
+
+            // 只在每帧更新
+            lastTime = now;
+
+            // 计算地球日，1秒=10地球日
+            // 需用时间追踪
+        }
+
+        // 时间追踪
+        let startTimestamp = performance.now();
+
+        function animate() {
+            const now = performance.now();
+            const deltaTime = (now - lastTime) || 16; // ms
+            update(deltaTime);
+            draw();
+
+            // 绘制计数器
+            drawOverlay();
+
+            requestAnimationFrame(animate);
+        }
+
+        function drawOverlay() {
+            // 背景半透明矩形
+            ctx.save();
+            ctx.globalAlpha = 0.6;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.roundRect = function (x, y, w, h, r) {
+                if (w < 2 * r) r = w / 2;
+                if (h < 2 * r) r = h / 2;
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                ctx.lineTo(x + r, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
+            };
+            ctx.roundRect(10, 10, 200, 60, 10);
+            ctx.fill();
+
+            ctx.fillStyle = 'black';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+
+            // FPS
+            ctx.fillText('FPS: ' + fps, 20, 20);
+            ctx.fillText('AVG FPS: ' + Math.round(avgFps * 100) / 100, 20, 40);
+            ctx.fillText('Earth Day: ' + earthDayCount, 120, 20);
+            ctx.restore();
+        }
+
+        // 更新地球日计数
+        let lastEarthTime = startTimestamp;
+
+        function updateEarthDay() {
+            const now = performance.now();
+            const deltaSeconds = (now - lastEarthTime) / 1000;
+            // 每秒10地球日
+            const deltaEarthDays = deltaSeconds * 10;
+            // 累加
+            earthDayCount += deltaEarthDays;
+            lastEarthTime = now;
+        }
+
+        // 动画主循环
+        function main() {
+            requestAnimationFrame(main);
+            // 更新时间
+            updateEarthDay();
+            // 比较时间间隔，用上一帧的时间进行同步
+            // 位置由worker异步更新，不在此同步
+            // 这里可以加入动画控制和性能检测
+        }
+
+        // 开始动画
+        function start() {
+            lastTime = performance.now();
+            lastEarthTime = lastTime;
+            requestAnimationFrame(animate);
+            requestAnimationFrame(main);
+        }
+
+        start();
+
+}) ();
+    </script>
+</body>
+
+</html>

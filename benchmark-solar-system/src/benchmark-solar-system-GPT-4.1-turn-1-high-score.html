@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Canvas 太阳系动画</title>
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #181a1f;
+        }
+
+        body {
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="solarsystem"></canvas>
+
+    <script id="worker-script" type="javascript/worker">
+self.planets = [];
+self.ELLIPTICITY = 0.0;
+self.TWOPI = 2 * Math.PI;
+
+self.onmessage = function(e) {
+  if (e.data.type === 'init') {
+    self.planets = e.data.planets;
+  } else if (e.data.type === 'tick') {
+    // 传递{elapsedEarthDay: Number}
+    const d = e.data.elapsedEarthDay;
+    let result = [];
+    for (let i = 0; i < self.planets.length; ++i) {
+      const p = self.planets[i];
+      // theta = (elapsedEarthDay / period) * 2π
+      const theta = ((d / p.period) * self.TWOPI) % self.TWOPI;
+      // 圆形轨道, 椭圆可加入 ELLIPTICITY
+      result.push({
+        x: p.orbitRadius * Math.cos(theta),
+        y: p.orbitRadius * Math.sin(theta),
+        theta: theta
+      });
+    }
+    postMessage({type:'positions', positions: result});
+  }
+};
+</script>
+
+    <script>
+        /** -------- 参数与数据定义 -------- **/
+        // 画布
+        const canvas = document.getElementById('solarsystem');
+        let ctx = canvas.getContext('2d');
+
+        // 星球参数定义: 名称,公转周期(地球日),轨道半径(屏幕缩放),半径(屏幕缩放),颜色
+        const PLANET_DATA = [
+            // 名称, 公转周期, 轨道半径缩放系数, 半径, 色板
+            { name: '太阳', ename: 'Sun', period: 1, orbit: 0, r: 44, colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'] },
+            { name: '水星', ename: 'Mercury', period: 87.97, orbit: 82, r: 7, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'] },
+            { name: '金星', ename: 'Venus', period: 224.7, orbit: 112, r: 11, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'] },
+            { name: '地球', ename: 'Earth', period: 365.26, orbit: 152, r: 13, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'] },
+            { name: '火星', ename: 'Mars', period: 686.98, orbit: 186, r: 11, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'] },
+            { name: '木星', ename: 'Jupiter', period: 4332.59, orbit: 236, r: 26, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'] },
+            { name: '土星', ename: 'Saturn', period: 10759.22, orbit: 288, r: 21, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'] },
+            { name: '天王星', ename: 'Uranus', period: 30685.4, orbit: 338, r: 17, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'] },
+            { name: '海王星', ename: 'Neptune', period: 60190.03, orbit: 378, r: 17, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'] },
+            { name: '冥王星', ename: 'Pluto', period: 90560, orbit: 410, r: 7, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'] }
+        ];
+
+        // FPS统计参数
+        const FPS_AVG_NUM = 60;
+
+        // 轨道线颜色
+        const ORBIT_COLOR = "rgba(255,255,255,0.13)";
+        const FPS_BG_STYLE = "rgba(255,255,255,0.35)";
+        const FPS_TEXT_STYLE = "black";
+        const FPS_BG_RADIUS = 16;
+
+        // 标签字体
+        const LABEL_FONT = "15px sans-serif";
+        const LABEL_FONT_BOLD = "bold 15px sans-serif";
+        const LABEL_BG_STYLE = "rgba(255,255,255,0.6)";
+        const LABEL_TEXT_STYLE = "black";
+        const LABEL_BG_PADDING = 4;
+        const LABEL_BG_RADIUS = 6;
+
+        /** -------- 离屏画布，用于轨道线 -------- **/
+        let orbitsCanvas = null;
+        let orbitsCtx = null;
+        let lastDims = { w: 0, h: 0, cx: 0, cy: 0, scale: 1 };
+
+        /** -------- Worker，行星公转计算 -------- **/
+        let worker;
+        let planetPositions = []; // [{x, y, theta},...]
+
+        // 尺寸与中心
+        let W = window.innerWidth, H = window.innerHeight, CENTER_X = W / 2, CENTER_Y = H / 2, SCALE = 1;
+
+        // 动画和计时同步
+        let lastTime = null;
+        let earthDay = 0;
+        let startSystemTime = performance.now();
+        let fpsList = [];
+        let lastFps = 0, avgFps = 0;
+
+        // 事件: 自适应窗口
+        function resizeCanvas() {
+            W = window.innerWidth; H = window.innerHeight;
+            canvas.width = W; canvas.height = H;
+            CENTER_X = W / 2;
+            CENTER_Y = H / 2;
+
+            // 缩放自适应 —— 以合适缩小太阳系比例; 需保证冥王星轨道在视图内
+            // 最大轨道系数 PLANET_DATA[9].orbit ~ 410，最大半径
+            // 0.93*(min(W,H)/2 - 最大星球半径)
+            let maxR = PLANET_DATA.reduce((acc, d) => Math.max(acc, d.orbit + d.r), 0);
+            SCALE = Math.min(W, H) / 2 * 0.93 / (maxR || 1);
+            // 轨道离屏canvas生成
+            drawOrbitsToOffscreen();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        /** ----- 画轨道线到离屏canvas ----- **/
+        function drawOrbitsToOffscreen() {
+            orbitsCanvas = document.createElement('canvas');
+            orbitsCanvas.width = W;
+            orbitsCanvas.height = H;
+            orbitsCtx = orbitsCanvas.getContext('2d');
+            orbitsCtx.clearRect(0, 0, W, H);
+            let cx = CENTER_X, cy = CENTER_Y, scale = SCALE;
+            // 绘制行星轨道线
+            for (let i = 1; i < PLANET_DATA.length; ++i) {
+                let r = PLANET_DATA[i].orbit * scale;
+                orbitsCtx.save();
+                orbitsCtx.beginPath();
+                orbitsCtx.arc(cx, cy, r, 0, Math.PI * 2);
+                orbitsCtx.strokeStyle = ORBIT_COLOR;
+                orbitsCtx.lineWidth = 1.3;
+                orbitsCtx.shadowColor = "rgba(255,255,255,0.18)";
+                orbitsCtx.shadowBlur = 2;
+                orbitsCtx.stroke();
+                orbitsCtx.restore();
+            }
+            lastDims = { w: W, h: H, cx, cy, scale };
+        }
+
+        /** --------- 渲染主循环 --------- **/
+        function mainLoop(t) {
+            if (!lastTime) lastTime = t;
+            // FPS相关
+            let dt = (t - lastTime) / 1000;
+            lastTime = t;
+            let fps = (dt > 0 ? 1 / dt : 60);
+            fpsList.push(fps);
+            if (fpsList.length > FPS_AVG_NUM) fpsList.shift();
+            lastFps = Math.round(fps);
+            avgFps = Math.round(fpsList.reduce((a, b) => a + b, 0) / fpsList.length);
+
+            // 当前地球日数（1s真实 = 10地球日）
+            let now = performance.now();
+            earthDay = ((now - startSystemTime) / 1000) * 10;
+
+            // 计算星球位置：主线程仅渲染，计算交给worker, worker返回后planetPositions才会更新渲染
+            if (worker) worker.postMessage({ type: 'tick', elapsedEarthDay: earthDay });
+
+            // 绘制背景
+            ctx.clearRect(0, 0, W, H);
+            // 绘制轨道
+            ctx.drawImage(orbitsCanvas, 0, 0);
+
+            // 绘制所有天体与标签
+            if (planetPositions && planetPositions.length) {
+                for (let i = 0; i < PLANET_DATA.length; ++i) {
+                    let d = PLANET_DATA[i];
+                    let px, py;
+                    if (i === 0) {
+                        // 太阳
+                        px = CENTER_X; py = CENTER_Y;
+                    } else {
+                        px = CENTER_X + planetPositions[i - 1].x * SCALE;
+                        py = CENTER_Y + planetPositions[i - 1].y * SCALE;
+                    }
+                    drawPlanet(px, py, d.r * SCALE, d.colors, d.name, true, i);
+                }
+            }
+            // 绘制状态栏
+            drawFpsBar();
+            requestAnimationFrame(mainLoop);
+        }
+
+        /** ----- 画天体+标签 ----- **/
+        function drawPlanet(x, y, r, colors, label, needLabel, idx) {
+            // 绘制一个星球, colors为4色
+            ctx.save();
+            let gradient;
+
+            // 太阳特殊表现为强烈径向渐变
+            if (idx === 0) {
+                gradient = ctx.createRadialGradient(x, y, r * 0.1, x, y, r * 1.1);
+                gradient.addColorStop(0, colors[0]);
+                gradient.addColorStop(0.30, colors[1]);
+                gradient.addColorStop(0.65, colors[2]);
+                gradient.addColorStop(1, colors[3]);
+            } else {
+                // 星球——4色"块"渐变, 利用角度块或径向块 (可加随机性点缀，现用饼块)
+                ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.closePath();
+                ctx.save();
+                ctx.clip();
+                for (let i = 0; i < 4; ++i) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.arc(x, y, r, i * Math.PI / 2, (i + 1) * Math.PI / 2, false);
+                    ctx.closePath();
+                    ctx.fillStyle = colors[i];
+                    ctx.globalAlpha = 1;
+                    ctx.fill();
+                }
+                ctx.restore();
+                // 再添加圆形径向渐变提亮
+                let gg = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 1.13);
+                gg.addColorStop(0, "#fff2");
+                gg.addColorStop(0.48, "#fff1");
+                gg.addColorStop(1, "#0000");
+                ctx.globalAlpha = 1;
+                ctx.beginPath();
+                ctx.arc(x, y, r * 1.13, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fillStyle = gg;
+                ctx.fill();
+                // 土星光环
+                if (idx === 6) {
+                    drawSaturnRing(x, y, r);
+                }
+            }
+            if (idx === 0) {
+                // 太阳发光边缘
+                ctx.save();
+                ctx.globalAlpha = 0.7;
+                let shine = ctx.createRadialGradient(x, y, r, x, y, r * 2);
+                shine.addColorStop(0, "#f2d17740");
+                shine.addColorStop(1, "#0000");
+                ctx.beginPath();
+                ctx.arc(x, y, r * 2, 0, Math.PI * 2);
+                ctx.fillStyle = shine;
+                ctx.fill();
+                ctx.restore();
+                // 太阳本体
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = 1;
+                ctx.shadowColor = "#ffcc3a";
+                ctx.shadowBlur = r * 0.85;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // 绘制星球主圆轮廓(带光)
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.strokeStyle = "#0002";
+            ctx.lineWidth = 1.4;
+            ctx.globalAlpha = 0.95;
+            ctx.stroke();
+
+            ctx.restore();
+
+            // 绘制标签
+            if (needLabel) {
+                drawLabel(x, y - r - 10, label);
+            }
+        }
+
+        /** -- 土星光环 -- **/
+        function drawSaturnRing(x, y, r) {
+            ctx.save();
+            ctx.globalAlpha = 0.53;
+            ctx.scale(1.66, 1.0); // 椭圆形
+            let ringGradient = ctx.createLinearGradient(x, y, x + r * 1.6, y);
+            ringGradient.addColorStop(0.0, "#968c6a00");
+            ringGradient.addColorStop(0.08, "#e5e1d499");
+            ringGradient.addColorStop(0.5, "#efecd6cc");
+            ringGradient.addColorStop(0.98, "#aea06d44");
+            ringGradient.addColorStop(1.0, "#968c6a00");
+            ctx.beginPath();
+            ctx.ellipse(x / 1.66, y, r * 1.57, r * 0.46, 0, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.fillStyle = ringGradient;
+            ctx.shadowColor = "#fff";
+            ctx.shadowBlur = 1.5;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        /** ----- 标签(圆角白底Bar) ----- **/
+        function drawLabel(x, y, text) {
+            ctx.save();
+            ctx.font = LABEL_FONT_BOLD;
+            let metrics = ctx.measureText(text);
+            let labelW = metrics.width + LABEL_BG_PADDING * 2;
+            let labelH = 23;
+            ctx.globalAlpha = 1;
+            ctx.beginPath();
+            ctx.moveTo(x - labelW / 2 + LABEL_BG_RADIUS, y - LABEL_BG_RADIUS);
+            ctx.lineTo(x + labelW / 2 - LABEL_BG_RADIUS, y - LABEL_BG_RADIUS);
+            ctx.quadraticCurveTo(x + labelW / 2, y - LABEL_BG_RADIUS, x + labelW / 2, y);
+            ctx.lineTo(x + labelW / 2, y + labelH - LABEL_BG_RADIUS);
+            ctx.quadraticCurveTo(x + labelW / 2, y + labelH, x + labelW / 2 - LABEL_BG_RADIUS, y + labelH);
+            ctx.lineTo(x - labelW / 2 + LABEL_BG_RADIUS, y + labelH);
+            ctx.quadraticCurveTo(x - labelW / 2, y + labelH, x - labelW / 2, y + labelH - LABEL_BG_RADIUS);
+            ctx.lineTo(x - labelW / 2, y);
+            ctx.quadraticCurveTo(x - labelW / 2, y - LABEL_BG_RADIUS, x - labelW / 2 + LABEL_BG_RADIUS, y - LABEL_BG_RADIUS);
+            ctx.closePath();
+            ctx.fillStyle = LABEL_BG_STYLE;
+            ctx.shadowColor = "#aaa";
+            ctx.shadowBlur = 1;
+            ctx.fill();
+
+            ctx.fillStyle = LABEL_TEXT_STYLE;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.font = LABEL_FONT_BOLD;
+            ctx.shadowColor = "#fff7";
+            ctx.shadowBlur = 1;
+            ctx.fillText(text, x, y + LABEL_BG_PADDING + 1);
+            ctx.restore();
+        }
+
+        /** ----- FPS/Day计数栏 ----- **/
+        function drawFpsBar() {
+            const str = `FPS: ${String(lastFps).padStart(2)}  AVG: ${String(avgFps).padStart(2)}
+Earth Day: ${Math.floor(earthDay)}`;
+            const lines = str.split('\n');
+            ctx.font = "bold 18px monospace";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+
+            // 最大行宽
+            let width = Math.max(...lines.map(line => ctx.measureText(line).width)) + 32;
+            let height = 28 * lines.length;
+            ctx.save();
+            ctx.globalAlpha = 1.0;
+            // 背景圆角
+            ctx.beginPath();
+            ctx.moveTo(17, 10);
+            ctx.lineTo(width - 17, 10);
+            ctx.quadraticCurveTo(width, 10, width, 27);
+            ctx.lineTo(width, height + 6 - 17);
+            ctx.quadraticCurveTo(width, height + 6, width - 17, height + 6);
+            ctx.lineTo(17, height + 6);
+            ctx.quadraticCurveTo(0, height + 6, 0, height + 6 - 17);
+            ctx.lineTo(0, 27);
+            ctx.quadraticCurveTo(0, 10, 17, 10);
+            ctx.closePath();
+            ctx.fillStyle = FPS_BG_STYLE;
+            ctx.shadowColor = "#fff";
+            ctx.shadowBlur = 2;
+            ctx.fill();
+
+            // 文字
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = FPS_TEXT_STYLE;
+            for (let i = 0; i < lines.length; ++i) {
+                let tx = 16;
+                let ty = 12 + i * 28;
+                ctx.fillText(lines[i], tx, ty);
+            }
+            ctx.restore();
+        }
+
+        /** ------ 启动worker及交换数据 ----- **/
+        function startWorker() {
+            // 创建Worker
+            if (worker) worker.terminate();
+            let workerScript = document.getElementById('worker-script').textContent;
+            // Blob URL
+            let blob = new Blob([workerScript], { type: 'application/javascript' });
+            let blobUrl = URL.createObjectURL(blob);
+            worker = new Worker(blobUrl);
+
+            // 传递行星公转数据(除太阳)
+            let planetOrbitData = PLANET_DATA.slice(1).map(d => {
+                return {
+                    period: d.period,
+                    orbitRadius: d.orbit // 屏幕相对比例, 无需缩放
+                };
+            });
+            worker.postMessage({ type: 'init', planets: planetOrbitData });
+
+            worker.onmessage = function (e) {
+                if (e.data.type === 'positions') {
+                    planetPositions = e.data.positions;
+                    // 确保太阳自己中心
+                    planetPositions.unshift({ x: 0, y: 0, theta: 0 });
+                }
+            };
+        }
+
+        /** ----------- 启动 ----------- **/
+        function main() {
+            resizeCanvas();
+            startWorker();
+            mainLoop(performance.now());
+        }
+        window.onload = main;
+
+    </script>
+</body>
+
+</html>
