@@ -649,6 +649,27 @@
         "point_16": 5,
         "point_17": 15,
         "Final-Score": 83
+    },
+    {
+        "LLM": "glm-4-32b",
+        "point_1": 5,
+        "point_2": 5,   
+        "point_3": 5,
+        "point_4": 3,
+        "point_5": 3,
+        "point_6": 5,
+        "point_7": 5,
+        "point_8": 5,
+        "point_9": 5,
+        "point_10": 5,
+        "point_11": 3,
+        "point_12": 0,
+        "point_13": 5,
+        "point_14": 3,  
+        "point_15": 0,
+        "point_16": 3,
+        "point_17": 30,
+        "Final-Score": 90
     }
 ]
 

@@ -29,7 +29,7 @@ for chart_script in $SCRIPTS; do
     
     # Change to the scripts directory and run the script
     cd "$SCRIPT_DIR"
-    python "./render-chart.py"
+    python3 "./render-chart.py"
     
     # Return to the original directory
     cd "$ORIGINAL_DIR"
@@ -41,7 +41,7 @@ done
 # Finally, run the coding benchmark chart renderer
 echo "Running render-coding-benchmark-chart.py..."
 if [ -f "./scripts/render-coding-benchmark-chart.py" ]; then
-    python "./scripts/render-coding-benchmark-chart.py"
+    python3 "./scripts/render-coding-benchmark-chart.py"
 else
     echo "Error: render-coding-benchmark-chart.py not found in current directory!"
     echo "Current directory: $(pwd)"
