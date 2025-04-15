@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Set</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 10px 15px;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <div class="stats" id="stats">
+        FPS: 0 | AVG FPS: 0 | CURRENT FRAME: 0/200
+    </div>
+
+    <script>
+        // 初始化画布
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+        const statsElement = document.getElementById('stats');
+        
+        // 设置画布大小为全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // 静夜思诗词处理（去重并保留原顺序）
+        const poem = "床前明月光疑是地上霜举头望低思故乡";
+        const uniqueChars = [...new Set(poem)].join('');
+        
+        // Mandelbrot Set 参数
+        let zoom = 1;
+        const zoomRate = 0.005; // 每帧放大0.5%
+        let currentFrame = 0;
+        const totalFrames = 200;
+        
+        // 设置中心点为Main cardioid和period bulbs的交界处（近似值）
+        const centerX = -0.75;
+        const centerY = 0;
+        
+        // 字符大小
+        const charSize = 8;
+        
+        // 颜色设置（由浅到深）
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", 
+            "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa", 
+            "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073", 
+            "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ];
+        
+        // FPS计算
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let currentFPS = 0;
+        let totalFPS = 0;
+        let avgFPS = 0;
+        let cycleCount = 0;
+        
+        // 检查点是否在Main cardioid或period bulbs中
+        function isInMainCardioidOrBulb(x, y) {
+            // 检查主心形区域
+            const q = (x - 0.25) * (x - 0.25) + y * y;
+            if (q * (q + (x - 0.25)) < 0.25 * y * y) {
+                return true;
+            }
+            
+            // 检查周期2圆球
+            if ((x + 1) * (x + 1) + y * y < 0.0625) {
+                return true;
+            }
+            
+            return false;
+        }
+        
+        // 计算Mandelbrot Set的迭代次数
+        function calculateMandelbrot(x0, y0, maxIter) {
+            if (isInMainCardioidOrBulb(x0, y0)) {
+                return -1; // 标记为主心形或周期球区域
+            }
+            
+            let x = 0;
+            let y = 0;
+            let iter = 0;
+            let xTemp = 0;
+            
+            while (x * x + y * y < 4 && iter < maxIter) {
+                xTemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xTemp;
+                iter++;
+            }
+            
+            return iter < maxIter ? iter : -2; // -2表示在集合内但不在主心形或周期球
+        }
+        
+        // 使用Web Workers进行并行计算
+        const workerCount = Math.min(8, navigator.hardwareConcurrency || 4);
+        const workers = [];
+        let completedWorkers = 0;
+        let mandelbrotData = [];
+        
+        // 创建Web Workers
+        function initializeWorkers() {
+            for (let i = 0; i < workerCount; i++) {
+                const workerScript = `
+                    self.onmessage = function(e) {
+                        const { startY, endY, width, height, maxIter, scale, offsetX, offsetY, charSize } = e.data;
+                        const result = [];
+                        
+                        function isInMainCardioidOrBulb(x, y) {
+                            const q = (x - 0.25) * (x - 0.25) + y * y;
+                            if (q * (q + (x - 0.25)) < 0.25 * y * y) {
+                                return true;
+                            }
+                            if ((x + 1) * (x + 1) + y * y < 0.0625) {
+                                return true;
+                            }
+                            return false;
+                        }
+                        
+                        function calculateMandelbrot(x0, y0, maxIter) {
+                            if (isInMainCardioidOrBulb(x0, y0)) {
+                                return -1;
+                            }
+                            
+                            let x = 0;
+                            let y = 0;
+                            let iter = 0;
+                            let xTemp = 0;
+                            
+                            while (x * x + y * y < 4 && iter < maxIter) {
+                                xTemp = x * x - y * y + x0;
+                                y = 2 * x * y + y0;
+                                x = xTemp;
+                                iter++;
+                            }
+                            
+                            return iter < maxIter ? iter : -2;
+                        }
+                        
+                        for (let y = startY; y < endY; y += charSize) {
+                            for (let x = 0; x < width; x += charSize) {
+                                const realX = (x - width / 2) * scale + offsetX;
+                                const realY = (y - height / 2) * scale + offsetY;
+                                const iter = calculateMandelbrot(realX, realY, maxIter);
+                                result.push({ x, y, iter });
+                            }
+                        }
+                        
+                        self.postMessage(result);
+                    };
+                `;
+                
+                const blob = new Blob([workerScript], { type: 'application/javascript' });
+                const worker = new Worker(URL.createObjectURL(blob));
+                
+                worker.onmessage = function(e) {
+                    mandelbrotData = mandelbrotData.concat(e.data);
+                    completedWorkers++;
+                    
+                    if (completedWorkers === workerCount) {
+                        renderMandelbrot();
+                    }
+                };
+                
+                workers.push(worker);
+            }
+        }
+        
+        // 计算Mandelbrot集合并渲染
+        function computeMandelbrot() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const maxIter = 100;
+            
+            // 计算缩放比例，使Mandelbrot集初始大小为屏幕的50%
+            const baseScale = 4.0 / Math.min(width, height) / 0.5;
+            const scale = baseScale / zoom;
+            
+            // 重置数据
+            mandelbrotData = [];
+            completedWorkers = 0;
+            
+            // 将计算任务分配给各个Worker
+            const rowsPerWorker = Math.ceil(height / workerCount);
+            
+            for (let i = 0; i < workerCount; i++) {
+                const startY = i * rowsPerWorker;
+                const endY = Math.min(startY + rowsPerWorker, height);
+                
+                workers[i].postMessage({
+                    startY,
+                    endY,
+                    width,
+                    height,
+                    maxIter,
+                    scale,
+                    offsetX: centerX,
+                    offsetY: centerY,
+                    charSize
+                });
+            }
+        }
+        
+        // 渲染Mandelbrot集合
+        function renderMandelbrot() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = `${charSize}px monospace`;
+            ctx.textBaseline = 'top';
+            
+            for (const point of mandelbrotData) {
+                const { x, y, iter } = point;
+                
+                if (iter === -1) {
+                    // 主心形和周期球区域留空
+                    continue;
+                } else if (iter === -2) {
+                    // 在集合内但不在主心形或周期球区域，使用最深的颜色
+                    ctx.fillStyle = colors[colors.length - 1];
+                    const charIndex = Math.abs(Math.floor(x * 0.3 + y * 0.7)) % uniqueChars.length;
+                    ctx.fillText(uniqueChars[charIndex], x, y);
+                } else {
+                    // 根据迭代次数选择颜色，外边缘使用深色，向内逐渐变浅
+                    const colorIndex = Math.min(colors.length - 1, Math.floor((colors.length - 1) * (1 - iter / 100)));
+                    ctx.fillStyle = colors[colorIndex];
+                    const charIndex = Math.abs(iter + Math.floor(x * 0.7 + y * 0.3)) % uniqueChars.length;
+                    ctx.fillText(uniqueChars[charIndex], x, y);
+                }
+            }
+            
+            // 更新FPS
+            frameCount++;
+            const now = performance.now();
+            const elapsed = now - lastTime;
+            
+            if (elapsed >= 1000) {
+                currentFPS = Math.round((frameCount * 1000) / elapsed);
+                totalFPS += currentFPS;
+                frameCount = 0;
+                lastTime = now;
+            }
+            
+            // 更新统计信息
+            statsElement.textContent = `FPS: ${currentFPS} | AVG FPS: ${avgFPS} | CURRENT FRAME: ${currentFrame}/${totalFrames}`;
+            
+            // 更新缩放和帧计数
+            zoom *= (1 + zoomRate);
+            currentFrame++;
+            
+            if (currentFrame > totalFrames) {
+                currentFrame = 0;
+                zoom = 1;
+                cycleCount++;
+                avgFPS = Math.round(totalFPS / cycleCount);
+            }
+            
+            // 请求下一帧
+            requestAnimationFrame(computeMandelbrot);
+        }
+        
+        // 启动动画
+        initializeWorkers();
+        computeMandelbrot();
+    </script>
+</body>
+</html>
