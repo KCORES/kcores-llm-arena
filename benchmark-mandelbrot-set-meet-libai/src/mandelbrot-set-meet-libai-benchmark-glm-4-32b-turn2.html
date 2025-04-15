@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII Mandelbrot Set</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 10px 15px;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mandelbrotCanvas"></canvas>
+    <div class="stats" id="stats">
+        FPS: 0 | AVG FPS: 0 | CURRENT FRAME: 0/200
+    </div>
+
+    <script>
+        // 初始化Canvas
+        const canvas = document.getElementById('mandelbrotCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 设置Canvas大小为全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // 处理《静夜思》，去重并保留原有顺序
+        const poem = "床前明月光疑是地上霜举头望低思故乡";
+        const uniqueChars = [...new Set(poem)].join('');
+        
+        // 颜色数组（由浅到深）
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", 
+            "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa", 
+            "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073", 
+            "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ];
+        
+        // Mandelbrot Set参数
+        let scale = Math.min(canvas.width, canvas.height) * 0.5; // 初始大小为屏幕的50%
+        const maxIterations = 100;
+        let centerX = -0.75; // Mandelbrot Set的大致中心
+        let centerY = 0;
+        const zoomFactor = 1.005; // 每帧放大0.5%
+        
+        // FPS计算
+        let frameCount = 0;
+        let totalFrameTime = 0;
+        let lastFrameTime = performance.now();
+        let currentFps = 0;
+        let avgFps = 0;
+        let frameNumber = 0;
+        let totalFps = 0;
+        let framesRendered = 0;
+        
+        // 检查点是否在主心形或周期泡沫中
+        function isInMainCardioid(x, y) {
+            // 检查主心形
+            const q = (x - 0.25) * (x - 0.25) + y * y;
+            if (q * (q + (x - 0.25)) < 0.25 * y * y) {
+                return true;
+            }
+            
+            // 检查周期-2泡沫
+            if ((x + 1) * (x + 1) + y * y < 0.0625) {
+                return true;
+            }
+            
+            return false;
+        }
+        
+        // 计算Mandelbrot集合的迭代次数
+        function calculateMandelbrot(x0, y0, maxIter) {
+            if (isInMainCardioid(x0, y0)) {
+                return -1; // 表示在主心形或周期泡沫内
+            }
+            
+            let x = 0;
+            let y = 0;
+            let iteration = 0;
+            let xTemp = 0;
+            
+            while (x * x + y * y <= 4 && iteration < maxIter) {
+                xTemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xTemp;
+                iteration++;
+            }
+            
+            if (iteration === maxIter) {
+                return -1; // 在集合内
+            }
+            
+            return iteration;
+        }
+        
+        // 使用Web Workers进行并行计算
+        const workers = [];
+        const workerCount = Math.min(8, navigator.hardwareConcurrency || 4);
+        const results = [];
+        let completedWorkers = 0;
+        
+        function initWorkers() {
+            for (let i = 0; i < workerCount; i++) {
+                const workerScript = `
+                    self.onmessage = function(e) {
+                        const { startY, endY, width, height, centerX, centerY, scale, maxIterations } = e.data;
+                        const result = [];
+                        
+                        function isInMainCardioid(x, y) {
+                            const q = (x - 0.25) * (x - 0.25) + y * y;
+                            if (q * (q + (x - 0.25)) < 0.25 * y * y) {
+                                return true;
+                            }
+                            if ((x + 1) * (x + 1) + y * y < 0.0625) {
+                                return true;
+                            }
+                            return false;
+                        }
+                        
+                        function calculateMandelbrot(x0, y0, maxIter) {
+                            if (isInMainCardioid(x0, y0)) {
+                                return -1;
+                            }
+                            
+                            let x = 0;
+                            let y = 0;
+                            let iteration = 0;
+                            let xTemp = 0;
+                            
+                            while (x * x + y * y <= 4 && iteration < maxIter) {
+                                xTemp = x * x - y * y + x0;
+                                y = 2 * x * y + y0;
+                                x = xTemp;
+                                iteration++;
+                            }
+                            
+                            if (iteration === maxIter) {
+                                return -1;
+                            }
+                            
+                            return iteration;
+                        }
+                        
+                        for (let y = startY; y < endY; y++) {
+                            for (let x = 0; x < width; x++) {
+                                const realPart = (x - width / 2) / scale + centerX;
+                                const imagPart = (y - height / 2) / scale + centerY;
+                                
+                                const iterations = calculateMandelbrot(realPart, imagPart, maxIterations);
+                                
+                                if (iterations !== -1) {
+                                    result.push({ x, y, iterations });
+                                }
+                            }
+                        }
+                        
+                        self.postMessage(result);
+                    };
+                `;
+                
+                const blob = new Blob([workerScript], { type: 'application/javascript' });
+                const worker = new Worker(URL.createObjectURL(blob));
+                
+                worker.onmessage = function(e) {
+                    results.push(e.data);
+                    completedWorkers++;
+                    
+                    if (completedWorkers === workerCount) {
+                        renderMandelbrot();
+                    }
+                };
+                
+                workers.push(worker);
+            }
+        }
+        
+        // 渲染Mandelbrot集合
+        function renderMandelbrot() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '8px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // 渲染所有计算结果
+            for (const workerResult of results) {
+                for (const point of workerResult) {
+                    const { x, y, iterations } = point;
+                    
+                    // 选择字符
+                    const charIndex = iterations % uniqueChars.length;
+                    const char = uniqueChars[charIndex];
+                    
+                    // 选择颜色 - 从外到内由深到浅
+                    const colorIndex = Math.min(colors.length - 1, 
+                                      Math.floor((maxIterations - iterations) / maxIterations * colors.length));
+                    ctx.fillStyle = colors[colorIndex];
+                    
+                    // 绘制字符
+                    ctx.fillText(char, x, y);
+                }
+            }
+            
+            // 计算FPS
+            const now = performance.now();
+            const frameTime = now - lastFrameTime;
+            lastFrameTime = now;
+            
+            currentFps = 1000 / frameTime;
+            totalFps += currentFps;
+            framesRendered++;
+            
+            // 更新统计信息
+            frameNumber = (frameNumber + 1) % 200;
+            if (frameNumber === 0) {
+                avgFps = totalFps / framesRendered;
+                totalFps = 0;
+                framesRendered = 0;
+                scale = Math.min(canvas.width, canvas.height) * 0.5; // 重置缩放
+            } else {
+                scale *= zoomFactor; // 放大0.5%
+            }
+            
+            document.getElementById('stats').textContent = 
+                `FPS: ${Math.round(currentFps)} | AVG FPS: ${Math.round(avgFps)} | CURRENT FRAME: ${frameNumber}/200`;
+            
+            // 清空结果数组，准备下一帧
+            results.length = 0;
+            completedWorkers = 0;
+            
+            // 请求下一帧
+            requestAnimationFrame(calculateNextFrame);
+        }
+        
+        // 计算下一帧
+        function calculateNextFrame() {
+            const chunkHeight = Math.ceil(canvas.height / workerCount);
+            
+            for (let i = 0; i < workerCount; i++) {
+                const startY = i * chunkHeight;
+                const endY = Math.min(startY + chunkHeight, canvas.height);
+                
+                workers[i].postMessage({
+                    startY,
+                    endY,
+                    width: canvas.width,
+                    height: canvas.height,
+                    centerX,
+                    centerY,
+                    scale,
+                    maxIterations
+                });
+            }
+        }
+        
+        // 初始化并开始动画
+        initWorkers();
+        calculateNextFrame();
+    </script>
+</body>
+</html>
