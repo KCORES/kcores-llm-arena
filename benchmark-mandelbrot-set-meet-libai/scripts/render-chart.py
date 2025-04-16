@@ -171,6 +171,9 @@ if args.render_type == "without-fps":
     )
 else:
     plt.savefig(
-        "llm_benchmark_results.png", dpi=300, bbox_inches="tight", pad_inches=0.5
+        "llm-benchmark-results-mandelbrot-set-meet-libai.png",
+        dpi=300,
+        bbox_inches="tight",
+        pad_inches=0.5,
     )
 plt.show()

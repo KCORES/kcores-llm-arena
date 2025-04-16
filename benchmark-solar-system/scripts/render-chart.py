@@ -121,5 +121,10 @@ plt.xticks(rotation=45, ha="right")
 # Show plot
 plt.tight_layout()
 # Save the plot as PNG file
-plt.savefig("llm_benchmark_results.png", dpi=300, bbox_inches="tight", pad_inches=0.5)
+plt.savefig(
+    "llm-benchmark-results-solar-system.png",
+    dpi=300,
+    bbox_inches="tight",
+    pad_inches=0.5,
+)
 plt.show()

@@ -163,7 +163,7 @@ Solar System Animation 测试
 
 ## 可视化结果
 
-![](./scripts/llm_benchmark_results.png)
+![](./scripts/llm-benchmark-results-solar-system.png)
 
 
 ## 结论

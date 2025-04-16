@@ -111,7 +111,7 @@ Generate code for an animated 3d plot of a launch from earth landing on mars and
 
 ## 可视化结果
 
-![Mars Mission Animation Benchmark](./scripts/llm_benchmark_results.png)
+![Mars Mission Animation Benchmark](./scripts/llm-benchmark-results-mars-mission.png)
 
 ## Winner
 

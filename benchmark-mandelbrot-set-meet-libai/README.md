@@ -142,7 +142,7 @@ Mandelbrot Set Meet LiBai 测试
 
 - 整体结果, FPS 数据占比较大, 体现了模型的代码优化水平
 
-![](./scripts/llm_benchmark_results.png)
+![](./scripts/llm-benchmark-results-mandelbrot-set-meet-libai.png)
 
 
 ## Winner

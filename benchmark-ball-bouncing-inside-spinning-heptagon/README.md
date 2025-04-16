@@ -125,7 +125,7 @@ Write a Python program that shows 20 balls bouncing inside a spinning heptagon:
 
 ## 可视化结果
 
-![](./scripts/llm_benchmark_results.png)
+![](./scripts/llm-benchmark-results-ball-bouncing-inside-spinning-heptagon.png)
 
 
 ## 结论
