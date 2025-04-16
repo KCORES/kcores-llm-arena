@@ -142,6 +142,10 @@ BENCHMARK_EXTENSIONS = {
     "benchmark-solar-system": ".html",
 }
 
+PATHS={"benchmark-ball-bouncing-inside-spinning-heptagon":"benchmark-ball-bouncing-inside-spinning-heptagon",
+           "mandelbrot-set-meet-libai-benchmark":"benchmark-mandelbrot-set-meet-libai",
+           "benchmark-mars-mission":"benchmark-mars-mission",
+           "benchmark-solar-system":"benchmark-solar-system"}
 
 def get_available_models(openai_client: OpenAI, filter_keyword: str = None) -> list[str]:
     """
@@ -245,12 +249,8 @@ def save_code_to_file(benchmark_name: str, model_name: str, turn: int, code: str
     safe_model_name = model_name.replace("/", "_").replace(":", "_")
 
     # 构建输出目录和文件路径
-    paths={"benchmark-ball-bouncing-inside-spinning-heptagon":"benchmark-ball-bouncing-inside-spinning-heptagon",
-           "mandelbrot-set-meet-libai-benchmark":"benchmark-mandelbrot-set-meet-libai",
-           "benchmark-mars-mission":"benchmark-mars-mission",
-           "benchmark-solar-system":"benchmark-solar-system"}
     # 文件将保存在 benchmark 名称对应的文件夹下的 src 子目录中
-    output_dir = Path(paths[benchmark_name]) / "src"
+    output_dir = Path(PATHS[benchmark_name]) / "src"
     output_dir.mkdir(parents=True, exist_ok=True) # 确保目录存在
     file_name = f"{benchmark_name}-{safe_model_name}-turn-{turn}{file_extension}"
     output_path = output_dir / file_name
@@ -283,7 +283,7 @@ def main(filter_keyword=None):
     # 2. 让用户选择或过滤模型
     # 示例：使用包含 "Mistral" 的模型 (根据你的要求)
     if filter_keyword is None:
-        filter_keyword = input("\n请输入要筛选的模型关键字（也可作为模型制造商前缀）（例如 'Mistral','OpenAI'），或直接按回车以选择所有模型: ").strip()
+        filter_keyword = input("\n请输入要筛选的模型关键字（也可作为模型制造商前缀）（例如 'Mistral','OpenAI',”gemini“），或直接按回车以选择所有模型: ").strip()
         need_replace=input("保存代码文件时是否需要去除模型制造商前缀？（请确保你的模型以模型制造商商名称开始，例如Mistral-ministral-3b-latest，去除后变为ministral-3b-latest）(y/n): ").strip().lower() == 'y'
     selected_models = [m for m in all_models if m.lower().strip().startswith(filter_keyword.lower())]
 
@@ -309,6 +309,9 @@ def main(filter_keyword=None):
                 completed_tasks += 1
                 print(f"  进度: {completed_tasks}/{total_tasks}")
 
+                if os.path.exists(f"{PATHS[benchmark_name]}/src/{benchmark_name}-{model_name}-turn-{turn}{BENCHMARK_EXTENSIONS[benchmark_name]}"):
+                    print(f"  文件 {benchmark_name}-{model_name}-turn-{turn}{BENCHMARK_EXTENSIONS[benchmark_name]} 已存在，跳过生成。")
+                    continue
                 # 生成代码
                 generated_code = generate_code(client, model_name, prompt)
 
