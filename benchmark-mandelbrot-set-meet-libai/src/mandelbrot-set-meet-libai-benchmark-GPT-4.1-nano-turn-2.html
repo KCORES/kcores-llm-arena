@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Mandelbrot ASCII Animation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        (async () => {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // 全屏自适应
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // 全屏参数
+            const width = () => canvas.width;
+            const height = () => canvas.height;
+
+            // ASCII字符集（诗词《静夜思》去重后，循环使用）
+            const poem = '床前明月光疑是地上霜举头望明月低头思故乡'; // 经过去重和整理
+            const ASCII_CHARS = Array.from(poem);
+
+            // 颜色候选集，从浅到深（由浅到深）
+            const colorPalette = [
+                '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7',
+                '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9',
+                '#68699b', '#706caa', '#5654a2', '#4d4398',
+                '#4a488e', '#274a78', '#2a4073', '#223a70',
+                '#192f60', '#1c305c', '#17184b', '#0f2350'
+            ];
+
+            const maxFrames = 200; // 总渲染次数
+            let currentFrame = 0;
+            let frameCount = 0;
+
+            // 计算平均FPS
+            const fpsSamples = [];
+            let fpsLastTime = performance.now();
+            let fps = 0;
+            let avgFps = 0;
+
+            // 渲染状态参数
+            const scaleInitial = 0.5; // 初始大小比例（屏幕50%）
+            let scaleFactor = scaleInitial;
+            const scaleGrowthPerFrame = Math.pow(0.995, 1); // 每帧放大0.5%
+            let centerX = 0;
+            let centerY = 0;
+
+            // 难点：找到Main cardioid和period bulbs交界点的位置
+            // 简单起见，我们将中心设在默认位置（-0.75, 0）附近，因为该区域间接代表主区域
+            // 但题意要求“始终在交界处”，这里可以假设中心在（-0.75, 0）附近
+            centerX = -0.75;
+            centerY = 0;
+
+            // 预计算字符索引
+            let asciiIndex = 0;
+            const getNextChar = () => {
+                const ch = ASCII_CHARS[asciiIndex];
+                asciiIndex = (asciiIndex + 1) % ASCII_CHARS.length;
+                return ch;
+            };
+
+            // 获得当前时间
+            function now() {
+                return performance.now();
+            }
+
+            // 计算每帧需要绘制的Mandelbrot区域
+            // 这里因为需要循环放大，区域每次变大 1 / scaleFactor
+            // 设定每次缩放后，区域宽高为初始宽高的比例
+            // 视界范围: 实数和虚数范围
+            const initialReMin = -2;
+            const initialReMax = 1;
+            const initialImMin = -1;
+            const initialImMax = 1;
+
+            // 当前缩放次数
+            let zoomCount = 0;
+
+            // 计算区域范围（每次缩放后更新）
+            function getComplexPlane(scale) {
+                const reCenter = -0.75;
+                const imCenter = 0;
+                const reRange = (initialReMax - initialReMin) / scale;
+                const imRange = (initialImMax - initialImMin) / scale;
+                const reMin = reCenter - reRange / 2;
+                const reMax = reCenter + reRange / 2;
+                const imMin = imCenter - imRange / 2;
+                const imMax = imCenter + imRange / 2;
+                return { reMin, reMax, imMin, imMax };
+            }
+
+            // 计算每个点的迭代次数（返回字符颜色索引）
+            function mandelbrotEscapeIterations(cRe, cIm, maxIter = 1000) {
+                let zRe = 0, zIm = 0;
+                let iter = 0;
+                while (zRe * zRe + zIm * zIm <= 4 && iter < maxIter) {
+                    const reTemp = zRe * zRe - zIm * zIm + cRe;
+                    zIm = 2 * zRe * zIm + cIm;
+                    zRe = reTemp;
+                    iter++;
+                }
+                return iter;
+            }
+
+            // 主动画循环
+            function animate() {
+                const startTime = now();
+
+                // 计算当前区域范围
+                const { reMin, reMax, imMin, imMax } = getComplexPlane(scaleFactor);
+                const reRange = reMax - reMin;
+                const imRange = imMax - imMin;
+
+                // 开始绘制
+                ctx.clearRect(0, 0, width(), height());
+
+                // 设置字体
+                ctx.font = '8px monospace';
+                ctx.textBaseline = 'top';
+
+                // 从左上角开始绘制
+                const pixelSize = 8; // 字符大小
+                const cols = Math.ceil(width() / pixelSize);
+                const rows = Math.ceil(height() / pixelSize);
+
+                // 避免每一行都重新计算交界区域
+                // 设置中心点对应的像素位置
+                const centerPixelX = Math.floor((centerX - reMin) / reRange * width());
+                const centerPixelY = Math.floor((centerY - imMin) / imRange * height());
+
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        const px = col * pixelSize;
+                        const py = row * pixelSize;
+
+                        // 转换为复数平面
+                        const cRe = reMin + (col / width()) * reRange;
+                        const cIm = imMax - (row / height()) * imRange; // y方向反转
+
+                        const iterCount = mandelbrotEscapeIterations(cRe, cIm, 1000);
+                        // 颜色索引（从外围深色到中心浅色）
+                        const colorIndex = Math.floor((iterCount / 1000) * (colorPalette.length - 1));
+                        const color = colorPalette[colorIndex];
+
+                        // 获取字符字符
+                        const ch = getNextChar();
+
+                        // 绘制字符
+                        ctx.fillStyle = color;
+                        ctx.fillText(ch, px, py);
+                    }
+                }
+
+                // 计时，更新FPS
+                const nowTime = now();
+                const delta = (nowTime - fpsLastTime) / 1000;
+                fps = 1 / delta;
+                fpsSamples.push(fps);
+                if (fpsSamples.length > 100) fpsSamples.shift();
+                avgFps = fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length;
+
+                fpsLastTime = nowTime;
+
+                // 绘制FPS信息（左上角半透明白色背景
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1;
+                ctx.font = '10px Arial';
+                ctx.textBaseline = 'top';
+
+                const infoX = 10;
+                const infoY = 10;
+                const padding = 4;
+
+                const fpsText = `FPS: ${fps.toFixed(1)}`;
+                const avgFpsText = `AVG FPS: ${avgFps.toFixed(1)}`;
+                const frameText = `CURRENT FRAME: ${currentFrame}/${maxFrames}`;
+
+                // 计算背景尺寸
+                ctx.font = '10px Arial';
+                const textWidth = Math.max(
+                    ctx.measureText(fpsText).width,
+                    ctx.measureText(avgFpsText).width,
+                    ctx.measureText(frameText).width
+                );
+
+                ctx.fillStyle = 'rgba(0,0,0,0.4)';
+                ctx.beginPath();
+                ctx.roundRect(infoX, infoY, textWidth + padding * 2, 50, 8);
+                ctx.fill();
+
+                // 绘制文本内容
+                ctx.fillStyle = 'black';
+                ctx.font = '10px Arial';
+                ctx.fillText(fpsText, infoX + padding, infoY + padding);
+                ctx.fillText(avgFpsText, infoX + padding, infoY + padding + 12);
+                ctx.fillText(frameText, infoX + padding, infoY + padding + 24);
+
+                // 统计帧数
+                currentFrame++;
+                if (currentFrame >= maxFrames) {
+                    currentFrame = 0;
+                    // 重置动画参数（放大倍数重新）
+                    scaleFactor = scaleInitial;
+                } else {
+                    // 放大比例
+                    scaleFactor *= 1.005; // 放大0.5%（即每帧放大0.5%）
+                }
+
+                // 继续下一帧
+                requestAnimationFrame(animate);
+            }
+
+            // 启动动画
+            animate();
+        })();
+    </script>
+</body>
+
+</html>

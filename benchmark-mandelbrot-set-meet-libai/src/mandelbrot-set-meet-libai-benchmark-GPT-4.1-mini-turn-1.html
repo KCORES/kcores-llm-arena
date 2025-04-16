@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, user-scalable=no" />
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            height: 100%;
+            width: 100%;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #info {
+            position: fixed;
+            left: 10px;
+            top: 10px;
+            background: rgba(255 255 255 / 0.7);
+            color: black;
+            font-family: "Microsoft Yahei", Arial, sans-serif;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 14px;
+            user-select: none;
+            line-height: 1.4em;
+            z-index: 1000;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="info">FPS: --<br>AVG FPS: --<br>CURRENT FRAME: 0/200</div>
+    <script>
+        // ------- 常量区域 ----------
+
+        // 李白《静夜思》原文（含重复及标点）：
+        // "床前明月光，疑是地上霜。举头望明月，低头思故乡。"
+        // 去标点后字符序列：
+        const poemRaw = "床前明月光疑是地上霜举头望明月低头思故乡";
+        // 去重且保持原顺序
+        function uniqueChars(str) {
+            const seen = new Set();
+            const arr = [];
+            for (const ch of str) {
+                if (!seen.has(ch)) {
+                    seen.add(ch);
+                    arr.push(ch);
+                }
+            }
+            return arr;
+        }
+        const poemChars = uniqueChars(poemRaw);
+
+        // 替代的标点只剩去了，所有都是汉字，无标点符号。
+
+        // 颜色，排序由浅到深色（正序）
+        const colorCandidates = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6",
+            "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+            "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073",
+            "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ];
+
+        // 字符尺寸
+        const FONT_SIZE = 8; // px, 宽高中式字体尺寸，字符排列无间距
+
+        // 帧数
+        const TOTAL_FRAMES = 200;
+
+        // 放大比例每帧
+        const SCALE_PER_FRAME = 1.005; // 0.5% 每帧放大
+
+        // Mandelbrot 计算最大迭代次数（建议50+，平衡性能）
+        const MAX_ITER = 50;
+
+        // canvas 填满全屏
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        // 用于统计部分
+        const infoDOM = document.getElementById("info");
+
+        // --------- 复杂的Mandelbrot区域映射及坐标 ----------
+        // 纯ASCII Mandelbrot, 只能画基于迭代逃逸次数的层级，所以Main cardioid and bulbs留空
+        // 所以这些点的迭代次数超高部分直接不显示字符（留空）
+        // 动画中心是卡迪欧伊德和周期灯泡的交界处，
+        // Mandelbrot 集著名的主心形理论定义中心在(约)-0.74364388703 + 0.13182590421i
+        // 先确认主心形及周期灯泡边的坐标：
+        // 这个点约是有名复杂点的边界，合适做动画中心点
+
+        // 屏幕坐标参数
+        let cw, ch;
+        // 字符网格宽高（字符个数）
+        let cols, rows;
+
+        // 初始化canvas尺寸和字符网格尺寸
+        function initCanvas() {
+            cw = window.innerWidth;
+            ch = window.innerHeight;
+            canvas.width = cw;
+            canvas.height = ch;
+            ctx.textBaseline = "top";
+            ctx.font = `${FONT_SIZE}px monospace`;
+            // 计算行列，保证字符排列无间距 FONT_SIZE px宽高，且排列严密贴合
+            cols = Math.floor(cw / FONT_SIZE);
+            rows = Math.floor(ch / FONT_SIZE);
+        }
+
+        initCanvas();
+
+        // 监听resize事件
+        window.addEventListener("resize", () => {
+            initCanvas();
+            resetAnimation();
+        });
+
+        // ----------------- Mandelbrot相关 ------------------
+
+        /**
+         * 迭代函数
+         * @param {number} cx 横坐标
+         * @param {number} cy 纵坐标
+         * @returns {number} 迭代次数，范围[0, MAX_ITER]
+         *
+         * Main cardioid and period bulbs 内点返回 MAX_ITER+1
+         * 其它点返回逃逸迭代次数
+         */
+        function mandelbrotIter(cx, cy) {
+            // 判断点是否在主心形或周期灯泡内留空 (返回 -1)
+            // 主心形判定：(p-1/4)^2 + q^2 < (1 - 2p + p^2/4)
+            // 更准确判断显示参照 https://en.wikipedia.org/wiki/Mandelbrot_set
+
+            // -0.743643887037158704752191506114774 + 0.131825904205311970493132056385139i 是动画中心
+
+            // 代码结构：
+            // - 如果点在主心形或周期灯泡，返回 -1 表明留空
+            // - 否则，计算逃逸迭代次数
+
+            // 坐标简写
+            // 从参考：https://en.wikipedia.org/wiki/Mandelbrot_set#Cardioid_and_bulbs
+
+            // 先判断主心形
+            // p = re(c) - 1/4
+            // q = im(c)
+            const p = cx - 0.25;
+            const q = cy;
+            const p2 = p * p;
+            const q2 = q * q;
+
+            // 主心形判断
+            // (p^2 + q^2)^(1/2) <= (1 - 2p + p^2 + q^2)/4 经典心脏体直接用以下方法判断：
+            const pMinus1_4 = p - 0.5;
+            const q2_ = q * q;
+            const qSq = q * q;
+            const temp = p2 + q2;
+            // 等价公式简化判定主心形
+            // as per wiki https://en.wikipedia.org/wiki/Mandelbrot_set#Cardioid_and_bulbs
+
+            if ((p2 + q2) * (p2 + q2 + p) <= 0.25 * q2) {
+                // 主心形内
+                return -1;
+            }
+
+            // 2nd bulb: circle centered at (-1,0) radius 1/4
+            const dx1 = cx + 1;
+            const dy1 = cy;
+            if (dx1 * dx1 + dy1 * dy1 <= 0.0625) {
+                // left bulb 0.25^2 = 0.0625
+                return -1;
+            }
+
+            // 3rd bulb: circle center at (-0.125, 0.75) radius 0.2
+            // 约定使周期灯泡部分也空白
+            const dx2 = cx + 0.125;
+            const dy2 = cy - 0.75;
+            if (dx2 * dx2 + dy2 * dy2 <= 0.04) {
+                return -1;
+            }
+
+            // 逃逸迭代计算
+            let x = 0, y = 0;
+            let iteration = 0;
+            while (x * x + y * y <= 4 && iteration < MAX_ITER) {
+                const xNew = x * x - y * y + cx;
+                y = 2 * x * y + cy;
+                x = xNew;
+                iteration++;
+            }
+            return iteration;
+        }
+
+        // ------------------ 动画状态 -------------------
+
+        // 每帧放大倍数累计到第N帧后的放大倍数
+        // 第n帧的scale = initial_scale * (SCALE_PER_FRAME)^n
+        // 我们将设置初始绘制范围占屏幕宽度的50%
+        // 初始宽度以字符数量计算，x方向跨度是50%屏幕宽，期望(50%宽)=cols*FONT_SIZE*0.5, 实际覆盖50%宽即可。
+        // 但是Mandelbrot区域坐标通常不是正方形，而这里用横向单位映射为 cols 字符，等比例计算纵向，保证整体区域保持长宽比按字符排列（字体宽高相同）。
+        //
+        // 动画中心固定在(-0.74364388703, 0.13182590421)
+        //
+        // 我们需要根据当前scale确定复平面区域的显示边界 minX, maxX, minY, maxY
+
+        // 解析方案：
+        // 初始绘制的Mandelbrot区域大小是屏幕宽度的50%
+        // 以字符格宽度为基准，复平面X范围是 [-ratio * halfWidth, ratio * halfWidth]，这里用scale和屏幕半宽计算放大缩小
+        // 这里需要先根据主心形边界来确定初始缩放比例range
+        // 先参考常用显视比例，适配字符网格
+
+        // 主要步骤：
+        // 1) 确定动画中心 mandelbrotCenter
+        // 2) 初始的横跨复平面长度 initRange
+        // 3) 每帧放大 scale = initScale * pow(SCALE_PER_FRAME, currentFrame)
+        // 4) 根据 scale 计算当前渲染复平面边界 (minX, maxX, minY, maxY)
+        // 5) 遍历所有字符点映射到复平面坐标
+        // 6) 计算迭代次数（如果为 -1，留空，否则用字符和颜色绘制）
+        // 7) 绘制完成
+
+        const mandelbrotCenter = {
+            re: -0.7436438870371587,
+            im: 0.13182590420531197
+        };
+
+        // 返回颜色索引，基于迭代逃逸次数和最大迭代次数，外围越深颜色索引越大（深色）
+        function getColorIndex(iter) {
+            // iter == -1: leave blank，不绘制
+            if (iter === -1) return -1;
+            // iter=0(最快逃逸)=最外围最深色索引(最大)
+            // iter=MAX_ITER=边界附近最浅色索引(最小)
+            // 颜色序列从浅到深，题设要求从外围使用最深色，从内到外变浅
+            // 留意题意：“字符从 mandelbrot set的最外围使用最深的颜色，然后依次变浅”
+            // 构造映射：
+            // iter=0 -> max color index (19)
+            // iter=MAX_ITER -> 0
+            // 反转映射：
+            let idx = Math.floor((1 - iter / MAX_ITER) * (colorCandidates.length - 1));
+            if (idx < 0) idx = 0;
+            if (idx >= colorCandidates.length) idx = colorCandidates.length - 1;
+            return idx;
+        }
+
+        // 字符选择使用诗词字符循环映射
+
+        let frameCount = 0;
+
+        // 初始范围
+        // 让初始范围宽度在复平面对整个屏幕等比例映射方案：
+        // 屏幕宽度对应的是字符列 * FONT_SIZE px
+        // 设置复平面X范围宽度初始为 3.0 (可根据需求调整)
+        //
+        // 但是题设要求“主要图形初始大小为屏幕的50%”，屏幕50%宽度中的 Mandelbrot Set 尺寸
+        // 这里取一个复平面宽度（3.0）对应屏幕半宽50%*2=一半屏宽，即屏幕一半宽度对应3的复平面宽度
+        // 即初始scale对应可视复平面X的宽度为3
+        // 屏幕像素宽度对应字符列数cols，每列FONT_SIZE宽
+        // 50%屏幕宽度 -> cols*FONT_SIZE*0.5 px
+        const INIT_VIEW_WIDTH_IN_CHAR = (cols * 0.5); // 50%屏幕宽度的字符数
+        const INIT_VIEW_WIDTH_IN_CPLANE = 3.0; // 复平面范围宽度3，共享映射像素和复平面
+
+        // 字符绘制字体间距严格为 8px * 8px，无间隙，保证排列紧密
+
+        // 计算每个字符对应复平面一个单位长度（复平面单位/每列字符数50%屏幕）
+        // pixels_per_char=FONT_SIZE px
+        // 复平面单位 per_char = INIT_VIEW_WIDTH_IN_CPLANE / INIT_VIEW_WIDTH_IN_CHAR
+
+        const INIT_PER_CHAR = INIT_VIEW_WIDTH_IN_CPLANE / INIT_VIEW_WIDTH_IN_CHAR;
+
+        // 初始每帧的放大系数（复平面范围长度）
+        // 每帧范围的宽度 = INIT_VIEW_WIDTH_IN_CPLANE / currentScale
+
+        // 但题意是“每渲染一次每帧放大0.5%”，放大是让范围变小，scale变大
+        // scale = 1 at frame 0
+        // 每帧复平面显示宽度 = INIT_VIEW_WIDTH_IN_CPLANE / (scale)
+        // scale = (1.005)^frameCount
+
+        // 动画状态重置函数
+        function resetAnimation() {
+            frameCount = 0;
+            fpsStats.reset();
+        }
+        resetAnimation();
+
+        // FPS统计优化
+
+        const fpsStats = {
+            lastTime: performance.now(),
+            frameTimes: [],
+            avgFPS: 0,
+            reset() {
+                this.lastTime = performance.now();
+                this.frameTimes = [];
+                this.avgFPS = 0;
+            },
+            frameTick() {
+                const now = performance.now();
+                const delta = now - this.lastTime;
+                this.lastTime = now;
+                const currentFPS = 1000 / delta;
+                this.frameTimes.push(currentFPS);
+                if (this.frameTimes.length > TOTAL_FRAMES) {
+                    this.frameTimes.shift();
+                }
+                if (this.frameTimes.length === TOTAL_FRAMES) {
+                    const sum = this.frameTimes.reduce((a, b) => a + b, 0);
+                    this.avgFPS = sum / this.frameTimes.length;
+                    return { currentFPS, avgFPS: this.avgFPS };
+                }
+                return { currentFPS, avgFPS: null };
+            }
+        };
+
+        // 主渲染循环
+
+        function renderFrame() {
+            ctx.clearRect(0, 0, cw, ch);
+            // 计算当前帧尺度
+            const scale = Math.pow(SCALE_PER_FRAME, frameCount);
+
+            // 当前复平面视域宽度
+            const viewWidth = INIT_VIEW_WIDTH_IN_CPLANE / scale;
+            // 视域高度根据屏幕宽高比例字符比例调整
+            // 保证字符比例 1:1，行数 rows，列数 cols
+            // 视域高度 = viewWidth * (rows/cols)
+
+            const viewHeight = (rows / cols) * viewWidth;
+
+            // 复平面边界
+            const minRe = mandelbrotCenter.re - viewWidth / 2;
+            const maxRe = mandelbrotCenter.re + viewWidth / 2;
+            const minIm = mandelbrotCenter.im - viewHeight / 2;
+            const maxIm = mandelbrotCenter.im + viewHeight / 2;
+
+            // 逐个字符格绘制
+            // 优化方案: 先用离屏canvas, 单字符预绘制尚不明显，直接根据颜色与字符绘制
+
+            // canvas绘制中文字符默认不支持fillText透明渐变色，所以直接绘制颜色文本即可
+            // 字体颜色由颜色数组确定，字符由诗词内字符循环顺序选择
+            // 字符映射规则（循环）：
+            // 使用遍历顺序
+            const totalChars = poemChars.length;
+
+            // 预定义临时字符串集合，减少操作
+            // ctx.fillStyle 设置由每字符颜色决定
+
+            // 主渲染双重循环，逐行逐列画
+
+            // - 对性能有要求，故每帧用requestAnimationFrame保证渲染速度
+            // - 只绘制非 -1 点字符，否则留空
+
+            // 画笔配置
+            ctx.textBaseline = "top";
+            ctx.font = `${FONT_SIZE}px monospace`;
+            // 不间距排列，字符都宽高8px，左上角定位即为字符位置
+
+            // 字符序号索引，全图按字符数组轮换 index = (row*cols + col) % totalChars
+
+            // 遍历屏幕字符格
+            for (let row = 0; row < rows; row++) {
+                // 计算复平面虚数坐标
+                // 屏幕 y从上向下映射 im 倒序，im最高在屏幕顶部
+                // 映射公式:
+                // im = maxIm - (row + 0.5) * (viewHeight / rows)
+                const im = maxIm - (row + 0.5) * (viewHeight / rows);
+
+                for (let col = 0; col < cols; col++) {
+                    // re = minRe + (col+0.5)* (viewWidth/cols)
+                    const re = minRe + (col + 0.5) * (viewWidth / cols);
+
+                    // 计算迭代次数
+                    let iter = mandelbrotIter(re, im);
+
+                    if (iter === -1) {
+                        // 这里是主心形及周期灯泡空白
+                        // 画空白，不绘制字符
+                        continue;
+                    }
+
+                    // 获取颜色索引
+                    const colorIndex = getColorIndex(iter);
+                    if (colorIndex < 0) {
+                        continue;
+                    }
+
+                    const color = colorCandidates[colorIndex];
+                    ctx.fillStyle = color;
+
+                    // 获取字符
+                    const charIndex = (row * cols + col) % totalChars;
+                    const ch = poemChars[charIndex];
+
+                    // 计算屏幕像素坐标
+                    // 直接字符左上角坐标（col * 8, row * 8）
+                    ctx.fillText(ch, col * FONT_SIZE, row * FONT_SIZE);
+                }
+            }
+
+            // FPS更新
+            const fpsData = fpsStats.frameTick();
+
+            // 更新左上角信息
+            let avgFPSText = fpsData.avgFPS ? fpsData.avgFPS.toFixed(1) : "--";
+            infoDOM.innerHTML =
+                `FPS: ${fpsData.currentFPS.toFixed(1)}<br>` +
+                `AVG FPS: ${avgFPSText}<br>` +
+                `CURRENT FRAME: ${frameCount + 1}/${TOTAL_FRAMES}`;
+
+            // 自增帧数
+            frameCount++;
+
+            if (frameCount >= TOTAL_FRAMES) {
+                // 计算平均FPS已经在fpsStats里
+                // 重置动画
+                frameCount = 0;
+                fpsStats.reset();
+            }
+            requestAnimationFrame(renderFrame);
+        }
+
+        renderFrame();
+
+    </script>
+</body>
+
+</html>

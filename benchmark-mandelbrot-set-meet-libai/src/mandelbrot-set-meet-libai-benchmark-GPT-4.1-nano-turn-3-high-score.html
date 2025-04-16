@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mandelbrot ASCII Animation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            display: flex;
+            gap: 8px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            padding: 4px 8px;
+            color: #000;
+        }
+
+        #fps,
+        #avgfps,
+        #frameCount {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            padding: 2px 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="info">
+        <div id="fps">FPS: 0</div>
+        <div id="avgfps">AVG FPS: 0</div>
+        <div id="frameCount">CURRENT FRAME: 0/200</div>
+    </div>
+    <script>
+        (function () {
+            const poem = `床前明月光疑是地上霜举头望明月低头思故乡`;
+            // 去重保持顺序
+            const chars = [];
+            const seen = new Set();
+            for (const ch of poem) {
+                if (!seen.has(ch)) {
+                    seen.add(ch);
+                    chars.push(ch);
+                }
+            }
+            const totalChars = chars.length;
+            // 颜色梯度
+            const colors = [
+                "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6",
+                "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+                "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073",
+                "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+            ];
+
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            const infoFPS = document.getElementById('fps');
+            const infoAvgFPS = document.getElementById('avgfps');
+            const infoFrame = document.getElementById('frameCount');
+
+            let width = window.innerWidth;
+            let height = window.innerHeight;
+
+            function resize() {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                canvas.width = width;
+                canvas.height = height;
+            }
+
+            window.addEventListener('resize', resize);
+            resize();
+
+            // 使用离屏canvas优化
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = width;
+            offCanvas.height = height;
+            const offCtx = offCanvas.getContext('2d');
+
+            // 图像参数
+            let scale = 1; // 当前的缩放因子
+            const maxFrames = 200;
+            let currentFrame = 0;
+            let totalTime = 0;
+            let fpsHistory = [];
+            const fpsHistorySize = 60;
+
+            // 放大缩小的参数
+            const zoomFactorPerFrame = 1.005; // 每帧放大0.5%
+            let currentZoom = 1;
+            let isReset = false;
+
+            // 计算位置
+            const pixelSize = 8; //字体像素大小
+            const cols = Math.floor(width / pixelSize);
+            const rows = Math.floor(height / pixelSize);
+
+            // 生成字符候选集循环索引
+            let charIndex = 0;
+
+            // 诗字符索引（去重后循环）
+            function getNextChar() {
+                const ch = chars[charIndex];
+                charIndex = (charIndex + 1) % totalChars;
+                return ch;
+            }
+
+            // 主视区（complex area）中心设置在main cardioid附近，简化设为原点(0,0)
+            // 以此为基础计算对应的区域范围
+            // 初始x,y范围设置为-2.5到1.5，-1到1
+            let viewCenterX = -0.25; //中心X
+            let viewCenterY = 0;     //中心Y
+            const initialRangeX = 3; //宽度范围
+            const initialRangeY = 2; //高度范围
+
+            let currentRangeX = initialRangeX;
+            let currentRangeY = initialRangeY;
+
+            // 只在重置时初始化
+            function reset() {
+                currentRangeX = initialRangeX;
+                currentRangeY = initialRangeY;
+                currentZoom = 1;
+                currentFrame = 0;
+                fpsHistory = [];
+                isReset = false;
+            }
+
+            // 判断点是否在 Mandelbrot set 内（简化版）
+            function mandelbrotEscape(cx, cy, maxIter = 100) {
+                let x = 0, y = 0, xx = 0, yy = 0, xy = 0, i = 0;
+                for (; i < maxIter; i++) {
+                    xx = x * x;
+                    yy = y * y;
+                    if (xx + yy > 4) break;
+                    xy = x * y;
+                    x = xx - yy + cx;
+                    y = 2 * xy + cy;
+                }
+                return i;
+            }
+
+            // 计算字符颜色索引
+            function getColorIndexForChar(i) {
+                // 从浅到深对应颜色索引
+                // 由外围到中心:外围深色，内层浅色
+                // 这里用颜色索引线性分配（逆序）
+                const baseIndex = Math.floor(i * colors.length / totalChars);
+                return colors.length - 1 - baseIndex; //外围深色，内层浅色
+            }
+
+            // 将像素位置转为复数平面坐标
+            function pixelToComplex(px, py) {
+                const x = viewCenterX + (px - width / 2) * currentRangeX / width;
+                const y = viewCenterY + (py - height / 2) * currentRangeY / height;
+                return { x, y };
+            }
+
+            // 渲染一帧
+            function render() {
+                const startTime = performance.now();
+
+                // 更新缩放
+                if (currentFrame > 0) {
+                    currentRangeX /= zoomFactorPerFrame;
+                    currentRangeY /= zoomFactorPerFrame;
+                }
+
+                // 画布准备
+                offCtx.clearRect(0, 0, width, height);
+                offCtx.font = `${pixelSize}px monospace`;
+                offCtx.textBaseline = 'top';
+
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        const px = col * pixelSize;
+                        const py = row * pixelSize;
+
+                        const { x, y } = pixelToComplex(px + pixelSize / 2, py + pixelSize / 2); // 取中心像素点
+
+                        // 计算escape
+                        const escapeCount = mandelbrotEscape(x, y, 50);
+                        const colorIdx = getColorIndexForChar(escapeCount);
+                        offCtx.fillStyle = colors[colorIdx];
+
+                        const ch = getNextChar();
+
+                        offCtx.fillText(ch, px, py);
+                    }
+                }
+
+                // 绘制到主canvas
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(offCanvas, 0, 0);
+
+                // 更新帧信息
+                currentFrame = (currentFrame + 1) % maxFrames;
+
+                const endTime = performance.now();
+                const frameTime = endTime - startTime;
+                // FPS统计
+                fpsHistory.push(1000 / frameTime);
+                if (fpsHistory.length > fpsHistorySize) fpsHistory.shift();
+
+                const fps = Math.round(1000 / frameTime);
+                infoFPS.textContent = `FPS: ${fps}`;
+
+                const avgFPS = Math.round(fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length);
+                infoAvgFPS.textContent = `AVG FPS: ${avgFPS}`;
+
+                infoFrame.textContent = `CURRENT FRAME: ${currentFrame}/${maxFrames}`;
+
+                if (currentFrame === 0) {
+                    // 200帧结束后，重置参数
+                    // 可以用此处优化适应（此例无特殊操作）
+                }
+
+                // 请求下一帧
+                requestAnimationFrame(render);
+            }
+
+            // 初始化
+            reset();
+            // 开始动画
+            requestAnimationFrame(render);
+        })();
+    </script>
+</body>
+
+</html>

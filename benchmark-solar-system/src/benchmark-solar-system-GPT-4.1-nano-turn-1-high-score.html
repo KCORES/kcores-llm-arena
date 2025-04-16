@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+        // 全屏Canvas
+        const canvas = document.createElement('canvas');
+        document.body.appendChild(canvas);
+        const ctx = canvas.getContext('2d');
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+        // 更新尺寸
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            // 也要更新离屏canvas
+            offCanvas.width = width;
+            offCanvas.height = height;
+            drawOrbits(); // 重新绘制轨道线
+        });
+
+        // 太阳位置（屏幕中心）
+        const centerX = () => width / 2;
+        const centerY = () => height / 2;
+
+        // 星球数据
+        const planets = [
+            { name: '水星', radius: 0.39, size: 6, orbitRadius: 60, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'] },
+            { name: '金星', radius: 0.72, size: 8, orbitRadius: 90, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'] },
+            { name: '地球', radius: 1.00, size: 9, orbitRadius: 120, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'] },
+            { name: '火星', radius: 1.52, size: 7, orbitRadius: 150, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'] },
+            { name: '木星', radius: 5.20, size: 14, orbitRadius: 200, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'] },
+            { name: '土星', radius: 9.58, size: 13, orbitRadius: 250, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'] },
+            { name: '天王星', radius: 19.20, size: 12, orbitRadius: 300, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'] },
+            { name: '海王星', radius: 30.05, size: 11, orbitRadius: 350, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'] },
+            { name: '冥王星', radius: 39.48, size: 8, orbitRadius: 400, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'] }
+        ];
+
+        // 轨道线绘制缓存
+        let orbitCanvas = document.createElement('canvas');
+        let offCtx = orbitCanvas.getContext('2d');
+
+        // 画轨道线
+        function drawOrbits() {
+            orbitCanvas.width = width;
+            orbitCanvas.height = height;
+            offCtx.clearRect(0, 0, width, height);
+            offCtx.globalAlpha = 0.3;
+            offCtx.strokeStyle = 'white';
+            planets.forEach(p => {
+                offCtx.beginPath();
+                offCtx.arc(centerX(), centerY(), p.orbitRadius, 0, Math.PI * 2);
+                offCtx.stroke();
+            });
+        }
+
+        // 初始化轨道线
+        drawOrbits();
+
+        // FPS和计数器
+        let fps = 0, fpsCount = 0, fpsTimer = 0;
+        let fpsSamples = [];
+        let lastTime = performance.now();
+        let deltaTime = 0;
+        let frameCount = 0;
+        let lastFpsUpdate = performance.now();
+        let earthDayCount = 0;
+
+        // 星球的角度（弧度）
+        planets.forEach(p => p.angle = Math.random() * Math.PI * 2);
+
+        // 计时压缩参数
+        const earthDaysPerSecond = 10; // 真实秒对应10地球日
+        const earthDaysPerFrame = earthDaysPerSecond * (deltaTime / 1000);
+
+        // 设定请求动画
+        function animate(timestamp) {
+            // 计算时间差
+            deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+            frameCount++;
+
+            code
+
+            // 更新FPS（每秒刷新一次）
+            fpsTimer += deltaTime;
+            if (fpsTimer >= 1000) {
+                fps = frameCount;
+                fpsSamples.push(fps);
+                if (fpsSamples.length > 60) fpsSamples.shift();
+                fps = Math.round(fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length);
+                frameCount = 0;
+                fpsTimer -= 1000;
+            }
+
+            // 计算地球日
+            const deltaEarthDays = earthDaysPerSecond * (deltaTime / 1000);
+            earthDayCount += deltaEarthDays;
+
+            // 更新角度
+            planets.forEach(p => {
+                // 一圈为 365 天（地球日），每个天对应的角度更改
+                const orbitPeriodDays = p.radius * 2 * Math.PI * p.orbitRadius; // 估算周期（笼统）
+                // 正确做法是用一个不同的公转周期
+                // 这里设定不同星球的公转周期：
+                // 但题中没有具体周期，假设它们都以相似比例
+                // 实际上，地球为 365 天一周，其他星球比例大致：
+                // 水星约88天，金星约225天，火星约687天，木星约4380天
+                // 这里我们用一个简化的比例关系
+                if (!p.periodDays) {
+                    // 设定公转周期（天数）
+                    switch (p.name) {
+                        case '水星': p.periodDays = 88; break;
+                        case '金星': p.periodDays = 225; break;
+                        case '地球': p.periodDays = 365; break;
+                        case '火星': p.periodDays = 687; break;
+                        case '木星': p.periodDays = 4380; break;
+                        case '土星': p.periodDays = 10759; break;
+                        case '天王星': p.periodDays = 30589; break;
+                        case '海王星': p.periodDays = 59800; break;
+                        case '冥王星': p.periodDays = 90560; break;
+                    }
+                }
+                // 计算角度递增
+                p.angle += (2 * Math.PI / p.periodDays) * deltaEarthDays;
+                if (p.angle > Math.PI * 2) p.angle -= Math.PI * 2;
+            });
+
+            // 绘制
+            ctx.clearRect(0, 0, width, height);
+            // 绘制静态轨道线
+            ctx.drawImage(orbitCanvas, 0, 0);
+
+            // 绘制太阳
+            const sunSize = 20; // 太阳视觉大小
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#f2831f';
+            ctx.beginPath();
+            ctx.arc(centerX(), centerY(), sunSize, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 绘制行星
+            planets.forEach(p => {
+                const x = centerX() + Math.cos(p.angle) * p.orbitRadius;
+                const y = centerY() + Math.sin(p.angle) * p.orbitRadius;
+
+                // 绘制轨道（可省略，因为已经绘制了轨道线）
+                // 但我们为每个行星添加标签，保证面向摄像机
+                // 绘制行星
+                ctx.save();
+
+                // 填色（像素块）
+                const colorIndex = Math.floor(Math.random() * p.colors.length);
+                ctx.fillStyle = p.colors[colorIndex];
+
+                ctx.beginPath();
+                ctx.arc(x, y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 画标签（始终面向摄像机）
+                ctx.font = '14px sans-serif';
+                ctx.fillStyle = 'white';
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+
+                // 确保文字面向摄像机，直接绘制在行星上方
+                ctx.fillText(p.name, x, y - p.size - 2);
+                ctx.restore();
+            });
+
+            // 画FPS和计数器
+            drawCounters();
+
+            requestAnimationFrame(animate);
+        }
+
+        // 绘制轨道线到离屏canvas
+        function renderOrbits() {
+            drawOrbits();
+            // 拷贝到主canvas
+            ctx.drawImage(orbitCanvas, 0, 0);
+        }
+
+        // 绘制计数器
+        function drawCounters() {
+            const padding = 10;
+            const boxWidth = 200;
+            const boxHeight = 60;
+
+            code
+
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.roundRect = function (x, y, w, h, r = 10) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                ctx.lineTo(x + r, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
+                ctx.fill();
+            };
+            ctx.roundRect(0, 0, boxWidth, boxHeight, 10);
+            ctx.fillRect(0, 0, boxWidth, boxHeight);
+            ctx.save();
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, boxWidth, boxHeight);
+            ctx.restore();
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+
+            // FPS
+            ctx.fillText(`FPS: ${fps}`, padding, padding + 14);
+            // 平均FPS
+            const avgFPS = fpsSamples.length > 0 ? Math.round(fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length) : 0;
+            ctx.fillText(`AVG FPS: ${avgFPS}`, padding, padding + 30);
+            // 地球日
+            ctx.fillText(`Earth Day: ${Math.floor(earthDayCount)}`, padding, padding + 46);
+        }
+
+        // 初始化
+        renderOrbits();
+
+        // 开始动画
+        requestAnimationFrame(animate);
+    </script>
+
+</body>
+
+</html>

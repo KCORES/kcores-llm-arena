@@ -15,7 +15,7 @@ KCORES LLM Arena - KCORES 大模型竞技场
 
 ## 真实世界编程能力测试 
 
-- version: **2025-04-06**
+- version: **2025-04-15**
 - Winner: **👑Gemini-2.5-Pro-Experimental-03-25**
 
 ### 评测内容
