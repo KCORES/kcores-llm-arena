@@ -297,12 +297,14 @@ def main(filter_keyword=None):
     # 循环遍历 Benchmarks 和选定的模型
     total_tasks = len(BENCHMARKS) * len(selected_models) * 3
     completed_tasks = 0
+    failed_model_name=[]
 
     for model_name in selected_models:
         print(f" 使用模型: {model_name}")
         for benchmark_name, prompt in BENCHMARKS.items():
             model_failed=False
             if model_failed:
+                failed_model_name.append(model_name)
                 break
             print(f"\n处理 Benchmark: {benchmark_name}")
             for turn in range(1, 4): # 每个项目测试三次
@@ -342,6 +344,10 @@ def main(filter_keyword=None):
                 time.sleep(1) # 休眠1秒
 
     print("\n所有代码生成任务完成!")
+    if len(failed_model_name)>0:
+        print(f"以下模型生成代码失败:")
+        for i,model in enumerate(failed_model_name):
+            print(f"{i+1}. {model}")
 
 if __name__ == "__main__":
     main()
