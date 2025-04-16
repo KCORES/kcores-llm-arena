@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mainCanvas"></canvas>
+
+    <script>
+        // ==== Web Worker 脚本 ====
+        const workerCode = `
+// 行星公转周期（地球日）
+self.periods = [88,225,365,687,4333,10759,30687,60190,90560];
+self.onmessage = function(e){
+  const { dayCount, centerX, centerY, orbitRs } = e.data;
+  const pos = [];
+  for(let i=0; i<9; i++){
+    const P = self.periods[i];
+    const ang = (dayCount % P) / P * 2 * Math.PI;
+    const r  = orbitRs[i];
+    pos.push({ x: centerX + r * Math.cos(ang),
+               y: centerY + r * Math.sin(ang) });
+  }
+  self.postMessage(pos);
+};`;
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const worker = new Worker(URL.createObjectURL(blob));
+
+        // ==== 主线程 ====
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 天体定义：太阳 + 9 颗行星
+        const sunDef = {
+            name: 'Sun',
+            colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'], radius: 30
+        };
+        const planetDefs = [
+            { name: 'Mercury', colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], radius: 5 },
+            { name: 'Venus', colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], radius: 8 },
+            { name: 'Earth', colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], radius: 10 },
+            { name: 'Mars', colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], radius: 7 },
+            { name: 'Jupiter', colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'], radius: 20 },
+            { name: 'Saturn', colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], radius: 18 },
+            { name: 'Uranus', colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], radius: 15 },
+            { name: 'Neptune', colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], radius: 15 },
+            { name: 'Pluto', colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], radius: 4 }
+        ];
+        const allBodies = [sunDef].concat(planetDefs);
+
+        // 用来存储各行星轨道半径
+        let orbitRs = [];
+
+        // 隐藏画布：专门绘制静态轨道
+        let orbitCanvas, orbitCtx;
+        function initOrbits() {
+            orbitCanvas = document.createElement('canvas');
+            orbitCanvas.width = canvas.width;
+            orbitCanvas.height = canvas.height;
+            orbitCtx = orbitCanvas.getContext('2d');
+            orbitCtx.clearRect(0, 0, canvas.width, canvas.height);
+            orbitCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+            orbitCtx.lineWidth = 1;
+
+            const cx = canvas.width / 2, cy = canvas.height / 2;
+            orbitRs = [];
+            let prevR = sunDef.radius;
+            // 从水星到冥王星
+            for (let i = 1; i < allBodies.length; i++) {
+                const r = prevR + allBodies[i].radius + 20;  // 保证轨道间距>直径
+                orbitRs.push(r);
+                orbitCtx.beginPath();
+                orbitCtx.arc(cx, cy, r, 0, 2 * Math.PI);
+                orbitCtx.stroke();
+                prevR = r + allBodies[i].radius;
+            }
+        }
+
+        // 为每个天体创建 2×2 像素的小图案，然后做 repeat 填充
+        const patterns = {};
+        function createPatterns() {
+            for (let body of allBodies) {
+                const pc = document.createElement('canvas');
+                pc.width = pc.height = 2;
+                const pctx = pc.getContext('2d');
+                // 四象限填色
+                pctx.fillStyle = body.colors[0]; pctx.fillRect(0, 0, 1, 1);
+                pctx.fillStyle = body.colors[1]; pctx.fillRect(1, 0, 1, 1);
+                pctx.fillStyle = body.colors[2]; pctx.fillRect(0, 1, 1, 1);
+                pctx.fillStyle = body.colors[3]; pctx.fillRect(1, 1, 1, 1);
+                patterns[body.name] = ctx.createPattern(pc, 'repeat');
+            }
+        }
+        createPatterns();
+
+        // 动画、统计变量
+        let lastT = performance.now();
+        let dayCount = 0, frameCount = 0, fpsSum = 0, currentFPS = 0;
+        let latestPos = [];
+
+        // 接收 Worker 传回的位置
+        worker.onmessage = function (e) {
+            latestPos = e.data;
+        };
+
+        // 绘制循环
+        function draw(now) {
+            const dt = now - lastT; lastT = now;
+            // 更新 FPS
+            currentFPS = 1000 / dt;
+            fpsSum += currentFPS; frameCount++;
+            // 更新时间
+            dayCount += dt / 1000 * 10;  // 1s = 10 地球日
+
+            // 发给 Worker，计算本帧所有行星位置
+            worker.postMessage({
+                dayCount: dayCount,
+                centerX: canvas.width / 2,
+                centerY: canvas.height / 2,
+                orbitRs: orbitRs
+            });
+
+            // 清屏
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // 画轨道
+            ctx.drawImage(orbitCanvas, 0, 0);
+
+            const cx = canvas.width / 2, cy = canvas.height / 2;
+
+            // 画太阳
+            ctx.fillStyle = patterns['Sun'];
+            ctx.beginPath();
+            ctx.arc(cx, cy, sunDef.radius, 0, 2 * Math.PI);
+            ctx.fill();
+            // 太阳标签
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Sun', cx, cy + sunDef.radius + 12);
+
+            // 画行星及标签
+            for (let i = 0; i < latestPos.length; i++) {
+                const b = planetDefs[i];
+                const p = latestPos[i];
+                if (!p) continue;
+                ctx.fillStyle = patterns[b.name];
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, b.radius, 0, 2 * Math.PI);
+                ctx.fill();
+                // 标签
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(b.name, p.x + b.radius + 3, p.y + 4);
+            }
+
+            // 左上角 FPS / AVG FPS / Day
+            const avgFPS = fpsSum / frameCount;
+            const statText =
+                `FPS: ${currentFPS.toFixed(1)}  AVG: ${avgFPS.toFixed(1)}  Day: ${Math.floor(dayCount)}`;
+            ctx.font = '14px sans-serif';
+            const pad = 6;
+            const m = ctx.measureText(statText);
+            const boxW = m.width + pad * 2;
+            const boxH = 20 + pad * 2;
+            // 半透明白色圆角背景
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            roundRect(ctx, 10, 10, boxW, boxH, 5);
+            ctx.fillStyle = '#000';
+            ctx.textAlign = 'left';
+            ctx.fillText(statText, 10 + pad, 10 + pad + 14);
+
+            requestAnimationFrame(draw);
+        }
+
+        // 绘制圆角矩形的辅助
+        function roundRect(c, x, y, w, h, r) {
+            c.beginPath();
+            c.moveTo(x + r, y);
+            c.lineTo(x + w - r, y);
+            c.quadraticCurveTo(x + w, y, x + w, y + r);
+            c.lineTo(x + w, y + h - r);
+            c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            c.lineTo(x + r, y + h);
+            c.quadraticCurveTo(x, y + h, x, y + h - r);
+            c.lineTo(x, y + r);
+            c.quadraticCurveTo(x, y, x + r, y);
+            c.closePath();
+            c.fill();
+        }
+
+        // 调整画布尺寸并重绘轨道
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initOrbits();
+        }
+
+        // 启动动画
+        requestAnimationFrame(draw);
+    </script>
+</body>
+
+</html>

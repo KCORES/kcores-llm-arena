@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.3);
+            font-family: Arial, sans-serif;
+            color: black;
+            line-height: 1.4em;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="overlay"></div>
+    <script>
+        // ====== 全局变量 & 初始化 ======
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        let W, H, CX, CY;
+        let orbitCanvas, orbitCtx;
+        let positions = [], earthDay = 0;
+        let frameCount = 0, fpsSum = 0, avgFps = 0;
+        let lastFrameTime = performance.now();
+
+        // 行星和太阳的数据
+        const bodiesData = [
+            { name: 'Mercury', orbitRadius: 60, radius: 6, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], period: 88 },
+            { name: 'Venus', orbitRadius: 90, radius: 12, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], period: 225 },
+            { name: 'Earth', orbitRadius: 120, radius: 14, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], period: 365 },
+            { name: 'Mars', orbitRadius: 150, radius: 10, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], period: 687 },
+            { name: 'Jupiter', orbitRadius: 200, radius: 30, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'], period: 4333 },
+            { name: 'Saturn', orbitRadius: 250, radius: 26, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], period: 10759 },
+            { name: 'Uranus', orbitRadius: 300, radius: 22, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], period: 30687 },
+            { name: 'Neptune', orbitRadius: 350, radius: 20, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], period: 60190 },
+            { name: 'Pluto', orbitRadius: 400, radius: 6, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], period: 90560 }
+        ];
+        // 太阳
+        const sun = {
+            name: 'Sun', orbitRadius: 0, radius: 80,
+            colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22']
+        };
+
+        // 调整画布大小
+        function resize() {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+            CX = W / 2; CY = H / 2;
+            initOrbitCanvas();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // ====== 离屏 Canvas：画轨道线 ======
+        function initOrbitCanvas() {
+            orbitCanvas = document.createElement('canvas');
+            orbitCanvas.width = W;
+            orbitCanvas.height = H;
+            orbitCtx = orbitCanvas.getContext('2d');
+            orbitCtx.clearRect(0, 0, W, H);
+            orbitCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+            orbitCtx.lineWidth = 1;
+            bodiesData.forEach(b => {
+                orbitCtx.beginPath();
+                orbitCtx.arc(CX, CY, b.orbitRadius, 0, Math.PI * 2);
+                orbitCtx.stroke();
+            });
+        }
+
+        // ====== 生成“像素填充”纹理，只做一次 ======
+        function hexToRgb(hex) {
+            hex = hex.replace('#', '');
+            const v = parseInt(hex, 16);
+            return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+        }
+        function randomChoice(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+        function genTexture(body) {
+            const D = body.radius * 2;
+            const off = document.createElement('canvas');
+            off.width = off.height = D;
+            const oc = off.getContext('2d');
+            const img = oc.createImageData(D, D);
+            const data = img.data;
+            for (let y = 0; y < D; y++) {
+                for (let x = 0; x < D; x++) {
+                    const dx = x - body.radius, dy = y - body.radius;
+                    if (dx * dx + dy * dy <= body.radius * body.radius) {
+                        const c = hexToRgb(randomChoice(body.colors));
+                        let idx = (y * D + x) * 4;
+                        data[idx] = c.r;
+                        data[idx + 1] = c.g;
+                        data[idx + 2] = c.b;
+                        data[idx + 3] = 255;
+                    }
+                }
+            }
+            oc.putImageData(img, 0, 0);
+            body.texture = off;
+        }
+
+        // 为所有天体生成纹理
+        [sun].concat(bodiesData).forEach(b => genTexture(b));
+        // 便于按名称查找
+        const bodyMap = {};
+        [sun].concat(bodiesData).forEach(b => bodyMap[b.name] = b);
+
+        // ====== Web Worker，用于轨道计算 ======
+        const workerCode = `
+  let bodies, elapsed=0, last=Date.now();
+  const timeScale = 10; // 1s = 10 地球日
+  onmessage = e => {
+    if(e.data.cmd==='init'){
+      bodies = e.data.bodies;
+      elapsed = 0;
+      last = Date.now();
+      setInterval(()=>{
+        const now = Date.now();
+        const dt = (now-last)/1000; last = now;
+        elapsed += dt * timeScale;
+        const out = bodies.map(b=>{
+          const ang = 2*Math.PI * (elapsed / b.period);
+          return {
+            name: b.name,
+            x: b.orbitRadius * Math.cos(ang),
+            y: b.orbitRadius * Math.sin(ang),
+            radius: b.radius
+          };
+        });
+        postMessage({positions: out, earthDay: elapsed});
+      }, 16);
+    }
+  };
+  `;
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const worker = new Worker(URL.createObjectURL(blob));
+        worker.onmessage = e => {
+            positions = e.data.positions;
+            earthDay = e.data.earthDay;
+        };
+        // 送入行星数据（不含太阳）
+        worker.postMessage({
+            cmd: 'init',
+            bodies: bodiesData.map(b => ({
+                name: b.name,
+                orbitRadius: b.orbitRadius,
+                radius: b.radius,
+                period: b.period
+            }))
+        });
+
+        // ====== 主渲染循环 ======
+        function animate() {
+            const now = performance.now();
+            const dt = (now - lastFrameTime) / 1000;
+            lastFrameTime = now;
+            const fps = 1 / dt;
+            fpsSum += fps; frameCount++;
+            avgFps = fpsSum / frameCount;
+
+            // 清屏
+            ctx.clearRect(0, 0, W, H);
+            // 画轨道
+            ctx.drawImage(orbitCanvas, 0, 0);
+            // 画太阳
+            ctx.drawImage(sun.texture, CX - sun.radius, CY - sun.radius);
+            // 画行星 & 标签
+            ctx.textBaseline = 'middle';
+            ctx.font = '12px Arial';
+            ctx.fillStyle = 'white';
+            positions.forEach(p => {
+                const b = bodyMap[p.name];
+                const px = CX + p.x - b.radius;
+                const py = CY + p.y - b.radius;
+                ctx.drawImage(b.texture, px, py);
+                // 标签
+                ctx.fillText(p.name, px + b.radius + 4, py + b.radius);
+            });
+            // 更新 Overlay
+            overlay.innerHTML =
+                'FPS: ' + fps.toFixed(1) + '<br>' +
+                'AVG FPS: ' + avgFps.toFixed(1) + '<br>' +
+                'Earth Day: ' + Math.floor(earthDay);
+
+            requestAnimationFrame(animate);
+        }
+
+        // 启动动画
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+
+</html>

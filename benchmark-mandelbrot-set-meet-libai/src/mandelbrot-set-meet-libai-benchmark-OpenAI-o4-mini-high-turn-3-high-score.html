@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot 《静夜思》</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <script>
+        (function () {
+            // —— SETUP CANVAS ——
+            const canvas = document.getElementById('c');
+            const ctx = canvas.getContext('2d');
+            let W, H, COLS, ROWS, DX, DY, initScale;
+            function resize() {
+                W = canvas.width = window.innerWidth;
+                H = canvas.height = window.innerHeight;
+                COLS = Math.ceil(W / 8);
+                ROWS = Math.ceil(H / 8);
+                // precompute pixel→offset arrays
+                DX = new Float32Array(COLS);
+                for (let i = 0; i < COLS; i++) {
+                    DX[i] = (i * 8 + 4 - W / 2);
+                }
+                DY = new Float32Array(ROWS);
+                for (let j = 0; j < ROWS; j++) {
+                    DY[j] = (H / 2 - (j * 8 + 4));
+                }
+                // initial scale so that world‑width=3.5 spans 50% of screen
+                initScale = (W * 0.5) / 3.5;
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // —— POEM CHARS (去重, 保留顺序, 无标点) ——
+            const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+            const poemChars = Array.from(new Set(poem.split('')));
+            const PC = poemChars.length;
+
+            // —— COLORS (由浅到深) ——
+            const colors = [
+                "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde",
+                "#8491c3", "#867ba9", "#68699b", "#706caa", "#5654a2", "#4d4398",
+                "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c",
+                "#17184b", "#0f2350"
+            ];
+            const MAX_ITER = colors.length;
+
+            // —– FRACTAL CENTER (main cardioid / period2 bulb intersection) —–
+            const CX = -0.75, CY = 0;
+
+            // —– STATS —–
+            let frame = 0;
+            let sumTime = 0;
+            let avgFps = "-";
+            let lastTime = performance.now();
+
+            ctx.textBaseline = "top";
+            ctx.font = "8px monospace";
+
+            function animate(ts) {
+                let dt = ts - lastTime;
+                lastTime = ts;
+                sumTime += dt;
+                frame++;
+
+                // once we exceed 200, compute avg, reset loop
+                if (frame > 200) {
+                    avgFps = (200 * 1000 / sumTime).toFixed(1);
+                    frame = 1;          // start new loop
+                    sumTime = 0;        // reset time accumulator
+                }
+
+                // clear bg
+                ctx.fillStyle = "black";
+                ctx.fillRect(0, 0, W, H);
+
+                // current zoom scale
+                let scale = initScale * Math.pow(1.005, frame - 1);
+
+                // draw ASCII Mandelbrot at 8×8 grid
+                for (let j = 0; j < ROWS; j++) {
+                    let dy = DY[j];
+                    for (let i = 0; i < COLS; i++) {
+                        let dx = DX[i];
+                        // map to complex plane
+                        let cr = dx / scale + CX;
+                        let ci = dy / scale + CY;
+                        // skip main cardioid or period‑2 bulb
+                        let x0 = cr - 0.25, y0 = ci;
+                        let q = x0 * x0 + y0 * y0;
+                        if (q * (q + x0) <= 0.25 * y0 * y0 || ((cr + 1) * (cr + 1) + ci * ci <= 0.0625)) {
+                            continue;
+                        }
+                        // iterate
+                        let x = 0, y = 0, xx = 0, yy = 0, iter = 0;
+                        while (xx + yy <= 4 && iter < MAX_ITER) {
+                            y = 2 * x * y + ci;
+                            x = xx - yy + cr;
+                            xx = x * x; yy = y * y;
+                            iter++;
+                        }
+                        // map iteration to color & char
+                        let idx = iter >= MAX_ITER ? MAX_ITER - 1 : iter;
+                        let col = colors[MAX_ITER - 1 - idx];
+                        let ch = poemChars[idx % PC];
+
+                        ctx.fillStyle = col;
+                        ctx.fillText(ch, i * 8, j * 8);
+                    }
+                }
+
+                // —— DRAW STATS BOX —— 
+                let fpsNow = (dt > 0 ? (1000 / dt).toFixed(1) : "0.0");
+                let lines = [
+                    "FPS: " + fpsNow,
+                    "AVG FPS: " + avgFps,
+                    "CURRENT FRAME: " + frame + "/200"
+                ];
+                // measure
+                let pad = 5;
+                let tw = 0;
+                for (let L of lines) {
+                    tw = Math.max(tw, ctx.measureText(L).width);
+                }
+                let th = 8 * lines.length;
+                let bx = 10, by = 10, bw = tw + pad * 2, bh = th + pad * 2, r = 6;
+                // rounded rect
+                ctx.fillStyle = "rgba(255,255,255,0.5)";
+                ctx.beginPath();
+                ctx.moveTo(bx + r, by);
+                ctx.lineTo(bx + bw - r, by);
+                ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + r);
+                ctx.lineTo(bx + bw, by + bh - r);
+                ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - r, by + bh);
+                ctx.lineTo(bx + r, by + bh);
+                ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - r);
+                ctx.lineTo(bx, by + r);
+                ctx.quadraticCurveTo(bx, by, bx + r, by);
+                ctx.closePath();
+                ctx.fill();
+                // texts
+                ctx.fillStyle = "black";
+                for (let i = 0; i < lines.length; i++) {
+                    ctx.fillText(lines[i], bx + pad, by + pad + i * 8);
+                }
+
+                requestAnimationFrame(animate);
+            }
+
+            requestAnimationFrame(animate);
+
+        })();
+    </script>
+</body>
+
+</html>

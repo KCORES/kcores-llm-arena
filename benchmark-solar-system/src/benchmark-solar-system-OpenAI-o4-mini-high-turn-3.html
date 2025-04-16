@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        /* 全屏、去滚动条、黑色背景 */
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        (function () {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // 1. 天体定义（名字、半径、4 色填充）
+            const planets = [
+                { name: '太阳', radius: 50, colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'] },
+                { name: '水星', radius: 4, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'] },
+                { name: '金星', radius: 7, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'] },
+                { name: '地球', radius: 8, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'] },
+                { name: '火星', radius: 6, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'] },
+                { name: '木星', radius: 18, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'] },
+                { name: '土星', radius: 14, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'] },
+                { name: '天王星', radius: 12, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'] },
+                { name: '海王星', radius: 12, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'] },
+                { name: '冥王星', radius: 5, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'] }
+            ];
+
+            // 2. 公转周期（地球日）→ 真实秒: 日/10
+            const periodDays = [0, 88, 225, 365, 687, 4333, 10759, 30687, 60190, 90560];
+            const speeds = periodDays.map(d => d === 0 ? 0 : 2 * Math.PI / (d / 10)); // rad/s
+
+            let radii = [];                     // 动态计算的轨道半径
+            let positions = planets.map(() => ({ x: 0, y: 0 }));  // Worker 发送回来的当前位置
+
+            // 小工具：#rrggbb → [r,g,b]
+            function hexToRGB(h) {
+                h = h.replace('#', '');
+                const v = parseInt(h, 16);
+                return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+            }
+            // 离屏生成「一次性」像素化填充图像
+            function createPlanetImage(radius, colors) {
+                const d = radius * 2;
+                const oc = document.createElement('canvas');
+                oc.width = d; oc.height = d;
+                const octx = oc.getContext('2d');
+                const img = octx.createImageData(d, d);
+                const data = img.data;
+                const rgbs = colors.map(hexToRGB);
+                for (let y = 0; y < d; y++) {
+                    for (let x = 0; x < d; x++) {
+                        const dx = x - radius, dy = y - radius;
+                        const idx = 4 * (y * d + x);
+                        if (dx * dx + dy * dy <= radius * radius) {
+                            const c = rgbs[Math.floor(Math.random() * rgbs.length)];
+                            data[idx] = c[0];
+                            data[idx + 1] = c[1];
+                            data[idx + 2] = c[2];
+                            data[idx + 3] = 255;
+                        } else {
+                            data[idx + 3] = 0;
+                        }
+                    }
+                }
+                octx.putImageData(img, 0, 0);
+                return oc;
+            }
+            const planetImages = planets.map(p => createPlanetImage(p.radius, p.colors));
+
+            // 离屏 Canvas 用来画固定不变的轨道线
+            let orbitCanvas, orbitCtx;
+            let cw, ch, cx, cy;
+            function resize() {
+                cw = canvas.width = window.innerWidth;
+                ch = canvas.height = window.innerHeight;
+                cx = cw / 2; cy = ch / 2;
+                // 动态计算 9 条轨道等间距
+                const maxOrbit = Math.min(cw, ch) * 0.45;
+                const spacing = maxOrbit / 9;
+                radii = [0];
+                for (let i = 1; i < planets.length; i++) radii.push(spacing * i);
+
+                orbitCanvas = document.createElement('canvas');
+                orbitCanvas.width = cw; orbitCanvas.height = ch;
+                orbitCtx = orbitCanvas.getContext('2d');
+                orbitCtx.clearRect(0, 0, cw, ch);
+                orbitCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+                orbitCtx.lineWidth = 1;
+                for (let i = 1; i < radii.length; i++) {
+                    orbitCtx.beginPath();
+                    orbitCtx.arc(cx, cy, radii[i], 0, 2 * Math.PI);
+                    orbitCtx.stroke();
+                }
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // 3. Web Worker 负责位置计算
+            const workerCode = () => {
+                self.onmessage = function (e) {
+                    const { time, radii, speeds, centerX, centerY } = e.data;
+                    const ps = [];
+                    for (let i = 0; i < radii.length; i++) {
+                        const ang = speeds[i] * time;
+                        ps.push({
+                            x: centerX + radii[i] * Math.cos(ang),
+                            y: centerY + radii[i] * Math.sin(ang)
+                        });
+                    }
+                    self.postMessage(ps);
+                };
+            };
+            const blob = new Blob(['(' + workerCode.toString() + ')()'], { type: 'application/javascript' });
+            const worker = new Worker(URL.createObjectURL(blob));
+
+            let started = false,
+                lastTime = 0, startTime = 0,
+                sumFPS = 0, frameCount = 0, fps = 0, avgFPS = 0;
+
+            worker.onmessage = function (e) {
+                positions = e.data;
+                if (!started) {
+                    started = true;
+                    lastTime = performance.now();
+                    startTime = lastTime;
+                    requestAnimationFrame(animate);
+                }
+            };
+            // 先发一次 0 时间，让 Worker 初始化好 positions
+            worker.postMessage({ time: 0, radii: radii, speeds: speeds, centerX: cx, centerY: cy });
+
+            // 动画主循环
+            function animate() {
+                const now = performance.now();
+                const dt = now - lastTime;
+                lastTime = now;
+                fps = dt > 0 ? 1000 / dt : 0;
+                sumFPS += fps;
+                frameCount++;
+                avgFPS = sumFPS / frameCount;
+                const elapsed = (now - startTime) / 1000;   // s
+                const earthDay = elapsed * 10;             // 地球日
+
+                // 请求下一帧的位置
+                worker.postMessage({ time: elapsed, radii: radii, speeds: speeds, centerX: cx, centerY: cy });
+
+                // 清屏
+                ctx.clearRect(0, 0, cw, ch);
+                // 绘制离屏轨道
+                ctx.drawImage(orbitCanvas, 0, 0);
+
+                // 绘制各天体
+                for (let i = 0; i < planets.length; i++) {
+                    const p = planets[i];
+                    const pos = positions[i] || { x: cx, y: cy };
+                    ctx.drawImage(planetImages[i], pos.x - p.radius, pos.y - p.radius);
+                }
+
+                // 绘制文字标签
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                for (let i = 0; i < planets.length; i++) {
+                    const p = planets[i];
+                    const pos = positions[i] || { x: cx, y: cy };
+                    ctx.fillText(p.name, pos.x, pos.y - p.radius - 2);
+                }
+
+                // 左上角 FPS/AVG/EarthDay 计数器
+                ctx.font = '14px monospace';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                const lines = [
+                    'FPS: ' + fps.toFixed(1),
+                    'AVG FPS: ' + avgFPS.toFixed(1),
+                    'Earth Day: ' + earthDay.toFixed(1)
+                ];
+                const pad = 6, lh = 18;
+                let bw = 0;
+                for (const t of lines) bw = Math.max(bw, ctx.measureText(t).width);
+                const boxW = bw + pad * 2;
+                const boxH = lh * lines.length + pad * 2;
+                const bx = 10, by = 10, rr = 6;
+
+                // 半透明白底圆角
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.beginPath();
+                ctx.moveTo(bx + rr, by);
+                ctx.lineTo(bx + boxW - rr, by);
+                ctx.quadraticCurveTo(bx + boxW, by, bx + boxW, by + rr);
+                ctx.lineTo(bx + boxW, by + boxH - rr);
+                ctx.quadraticCurveTo(bx + boxW, by + boxH, bx + boxW - rr, by + boxH);
+                ctx.lineTo(bx + rr, by + boxH);
+                ctx.quadraticCurveTo(bx, by + boxH, bx, by + boxH - rr);
+                ctx.lineTo(bx, by + rr);
+                ctx.quadraticCurveTo(bx, by, bx + rr, by);
+                ctx.closePath();
+                ctx.fill();
+
+                // 黑字
+                ctx.fillStyle = '#000';
+                for (let i = 0; i < lines.length; i++) {
+                    ctx.fillText(lines[i], bx + pad, by + pad + i * lh);
+                }
+
+                requestAnimationFrame(animate);
+            }
+        })();
+    </script>
+</body>
+
+</html>

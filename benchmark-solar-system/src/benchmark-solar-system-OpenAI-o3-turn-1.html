@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>HTML5 Canvas Solar System</title>
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="main"></canvas>
+
+    <script>
+        /* ---------- 基础数据 ---------- */
+        const PLANETS = [
+            // name, radius(px), orbit(由程序稍后计算), period(days), colors[4]
+            ["Sun", 60, 0, 0, ["#f2831f", "#f15d22", "#d94125", "#a41d22"]],
+            ["Mercury", 4, 0, 88, ["#5a5856", "#bfbdbc", "#8c8a89", "#f4f6f8"]],
+            ["Venus", 7, 0, 225, ["#868a8d", "#d9b392", "#f3dbc3", "#414141"]],
+            ["Earth", 8, 0, 365, ["#1f386f", "#0b1725", "#386f61", "#dac0a5"]],
+            ["Mars", 6, 0, 687, ["#dabd9e", "#8c5d4b", "#f27c5f", "#c36d5c"]],
+            ["Jupiter", 14, 0, 4333, ["#282411", "#c08137", "#bfb09c", "#a6705b"]],
+            ["Saturn", 12, 0, 10759, ["#f3cf89", "#dab778", "#736b59", "#c1a480"]],
+            ["Uranus", 10, 0, 30687, ["#3f575a", "#688a8c", "#95bbbe", "#cfecf0"]],
+            ["Neptune", 10, 0, 60190, ["#647ba5", "#7595bf", "#4e5d73", "#789ebf"]],
+            ["Pluto", 4, 0, 90785, ["#d8cbbb", "#f4ebdc", "#402a16", "#a79f97"]],
+        ];
+
+        /* ---------- 运行参数 ---------- */
+        const DAY_PER_SECOND = 10;            // 1秒 = 10 个地球日
+        const ORBIT_GAP = 50;            // 轨道间隔(像素)，保证不重叠
+        const FPS_SAMPLE = 60;            // FPS 取样帧数
+
+        /* ---------- 全局变量 ---------- */
+        const canvas = document.getElementById('main');
+        const ctx = canvas.getContext('2d');
+        let offscreenOrbit;                   // 离屏 canvas 存放轨道
+        let textures = [];                  // 行星纹理
+        let startTime = performance.now();
+        let frameTimes = [];
+        let avgFps = 0;
+        let worker;                           // Web Worker 实例
+        let angles = new Array(PLANETS.length).fill(0); // 每帧接收的行星角度
+
+        resize();              // 初始尺寸与轨道生成
+        generateTextures();    // 生成星球纹理
+        setupWorker();         // 创建 Worker
+        requestAnimationFrame(loop);
+        window.addEventListener('resize', resize);
+
+        /* ---------- 生成行星纹理 ---------- */
+        function generateTextures() {
+            textures = PLANETS.map(([name, radius, _, __, colors]) => {
+                const size = radius * 2;
+                const c = document.createElement('canvas');
+                c.width = c.height = size;
+                const cctx = c.getContext('2d');
+                const img = cctx.createImageData(size, size);
+                for (let y = 0; y < size; y++) {
+                    for (let x = 0; x < size; x++) {
+                        const dx = x - radius, dy = y - radius;
+                        if (dx * dx + dy * dy > radius * radius) continue; // outside circle
+                        const col = colors[Math.random() * 4 | 0];
+                        const idx = (y * size + x) * 4;
+                        img.data[idx + 0] = parseInt(col.substr(1, 2), 16);
+                        img.data[idx + 1] = parseInt(col.substr(3, 2), 16);
+                        img.data[idx + 2] = parseInt(col.substr(5, 2), 16);
+                        img.data[idx + 3] = 255;
+                    }
+                }
+                cctx.putImageData(img, 0, 0);
+                return c;
+            });
+        }
+
+        /* ---------- 轨道绘制到离屏 ---------- */
+        function buildOrbitCanvas() {
+            offscreenOrbit = document.createElement('canvas');
+            offscreenOrbit.width = canvas.width;
+            offscreenOrbit.height = canvas.height;
+            const octx = offscreenOrbit.getContext('2d');
+            octx.clearRect(0, 0, canvas.width, canvas.height);
+            octx.strokeStyle = 'rgba(255,255,255,0.2)';
+            octx.lineWidth = 1;
+
+            const cx = canvas.width / 2, cy = canvas.height / 2;
+            for (let i = 1; i < PLANETS.length; i++) {
+                const r = PLANETS[i][2];
+                octx.beginPath();
+                octx.arc(cx, cy, r, 0, Math.PI * 2);
+                octx.stroke();
+            }
+        }
+
+        /* ---------- Worker 设置 ---------- */
+        function setupWorker() {
+            const workerCode = `
+        const periods = ${JSON.stringify(PLANETS.map(p => p[3]))};
+        onmessage = e=>{
+            const days = e.data;      // 当前经过的地球日
+            const angles = periods.map(p=>p? (days/p)*Math.PI*2 : 0); // 太阳不动
+            postMessage(angles);
+        };
+    `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            worker = new Worker(URL.createObjectURL(blob));
+            worker.onmessage = e => angles = e.data;
+        }
+
+        /* ---------- 调整画布 & 轨道半径 ---------- */
+        function resize() {
+            canvas.width = innerWidth;
+            canvas.height = innerHeight;
+
+            // 根据屏幕大小重新计算轨道半径
+            const base = Math.min(canvas.width, canvas.height) * 0.25; // 太阳到水星距离
+            PLANETS.forEach((p, i) => {
+                if (i === 0) { p[2] = 0; return; }              // 太阳无轨道半径
+                p[2] = base + (i - 1) * ORBIT_GAP;         // 简易等间隔
+            });
+            buildOrbitCanvas();
+        }
+
+        /* ---------- 主循环 ---------- */
+        function loop(now) {
+            requestAnimationFrame(loop);
+
+            /* ---- 计算模拟天数 / 发送到 Worker ---- */
+            const elapsedSec = (now - startTime) / 1000;
+            const elapsedDays = elapsedSec * DAY_PER_SECOND;
+            worker.postMessage(elapsedDays);
+
+            /* ---- FPS 统计 ---- */
+            const delta = frameTimes.length ? now - frameTimes[0] : 0;
+            frameTimes.push(now);
+            if (frameTimes.length > FPS_SAMPLE) frameTimes.shift();
+            const fps = delta ? (frameTimes.length - 1) * 1000 / delta : 0;
+            avgFps = avgFps ? (avgFps * 0.95 + fps * 0.05) : fps;
+
+            /* ---- 绘制 ---- */
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(offscreenOrbit, 0, 0);       // 轨道
+
+            const cx = canvas.width / 2, cy = canvas.height / 2;
+
+            for (let i = 0; i < PLANETS.length; i++) {
+                const [name, radius, orbit] = PLANETS[i];
+                let x = cx, y = cy;
+                if (i > 0) {
+                    const a = angles[i] || 0;
+                    x = cx + Math.cos(a) * orbit;
+                    y = cy + Math.sin(a) * orbit;
+                }
+                // 星球
+                ctx.drawImage(textures[i], x - radius, y - radius);
+
+                // 标签
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('[' + name + ']', x, y + radius + 14);
+            }
+
+            /* ---- FPS / DAY 指示 ---- */
+            const label = \`FPS: \${fps.toFixed(1)}  AVG: \${avgFps.toFixed(1)}  Earth Day: \${Math.floor(elapsedDays)}\`;
+    ctx.font='14px monospace';
+    const metrics = ctx.measureText(label);
+    const pad=8,corner=6,w=metrics.width+pad*2,h=22;
+    ctx.fillStyle='rgba(255,255,255,0.6)';
+    roundRect(ctx,pad,pad,w,h,corner,true,false);
+    ctx.fillStyle='#000';
+    ctx.textAlign='left';
+    ctx.textBaseline='middle';
+    ctx.fillText(label,pad*1.5,pad+h/2);
+}
+
+/* ---------- 绘制圆角矩形 ---------- */
+function roundRect(c,x,y,w,h,r,fill,stroke){
+    c.beginPath();
+    c.moveTo(x+r,y);
+    c.arcTo(x+w,y,x+w,y+h,r);
+    c.arcTo(x+w,y+h,x,y+h,r);
+    c.arcTo(x,y+h,x,y,r);
+    c.arcTo(x,y,x+w,y,r);
+    c.closePath();
+    if(fill) c.fill();
+    if(stroke) c.stroke();
+}
+    </script>
+</body>
+
+</html>

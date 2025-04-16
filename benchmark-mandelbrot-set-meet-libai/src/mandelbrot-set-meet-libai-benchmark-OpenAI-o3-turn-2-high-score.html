@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>ASCII Mandelbrot – 静夜思</title>
+    <style>
+        /* 全屏 Canvas */
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #c {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* FPS 指示器 */
+        #stats {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, .6);
+            border-radius: 6px;
+            padding: 4px 8px;
+            font: 12px/14px monospace;
+            color: #000;
+            user-select: none;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <div id="stats">
+        FPS: <span id="fps">0</span><br />
+        AVG FPS: <span id="avg">0</span><br />
+        CURRENT FRAME: <span id="frame">0/200</span>
+    </div>
+
+    <script>
+        // ------------ Config ------------
+        const poemStr = '床前明月光疑是地上霜举头望低思故乡'; // 已去重并保持原顺序
+        const chars = poemStr.split('');
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde', '#8491c3',
+            '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398', '#4a488e', '#274a78',
+            '#2a4073', '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'             // 深色
+        ];
+        const darkestIndex = colors.length - 1;           // index 19
+        const fontSize = 8;                             // px
+        const charW = 8, charH = 8;                     // 无间距
+
+        const maxIter = 50;            // Mandelbrot 最大迭代
+        const zoomStep = 1.005;         // 每帧放大 0.5%
+        const maxFrame = 200;           // 200 帧后重置
+        const centerX = -0.75, centerY = 0; // 交界处
+
+        // ------------ Canvas / Context ------------
+        const cvs = document.getElementById('c');
+        const ctx = cvs.getContext('2d');
+        ctx.font = `${fontSize}px monospace`;
+        ctx.textBaseline = 'top';
+
+        // ------------ Statistics ------------
+        const fpsEl = document.getElementById('fps');
+        const avgEl = document.getElementById('avg');
+        const frmEl = document.getElementById('frame');
+
+        let lastTime = performance.now();
+        let frame = 0;
+        let fpsSum = 0;
+
+        // ------------ Resize ------------
+        function resize() {
+            cvs.width = window.innerWidth;
+            cvs.height = window.innerHeight;
+        }
+        window.addEventListener('resize', () => { resize(); });
+        resize();
+
+        // ------------ Main Loop ------------
+        let zoom = 1;
+        let charIndex = 0;
+
+        function draw() {
+            // 统计 FPS
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            const fps = 1000 / delta;
+            fpsSum += fps;
+            fpsEl.textContent = fps.toFixed(1);
+            frmEl.textContent = `${frame + 1}/${maxFrame}`;
+
+            // 画布清空
+            ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+            // 计算复平面尺寸（宽度为3/zoom，对应 Mandelbrot -2~1）
+            const planeW = 3 / zoom;
+            const planeH = planeW * (cvs.height / cvs.width);
+
+            // 字符网格尺寸
+            const cols = (cvs.width / charW) | 0;
+            const rows = (cvs.height / charH) | 0;
+
+            // 预计算步长
+            const stepX = planeW / cols;
+            const stepY = planeH / rows;
+            const startX = centerX - planeW / 2;
+            const startY = centerY - planeH / 2;
+
+            // 遍历像素格
+            let y = startY;
+            for (let r = 0; r < rows; r++, y += stepY) {
+                let x = startX;
+                for (let c = 0; c < cols; c++, x += stepX) {
+
+                    // Mandelbrot 迭代
+                    let zx = 0, zy = 0, iter = 0;
+                    let zx2 = 0, zy2 = 0;
+                    while (zx2 + zy2 <= 4 && iter < maxIter) {
+                        zy = 2 * zx * zy + y;
+                        zx = zx2 - zy2 + x;
+                        zx2 = zx * zx;
+                        zy2 = zy * zy;
+                        iter++;
+                    }
+                    if (iter === maxIter) continue; // 内部 - 留空
+
+                    // 颜色：外围（iter 小）→深色；越接近集合边界越浅
+                    const t = iter / maxIter; // 0..1
+                    const idx = darkestIndex - Math.floor(t * darkestIndex);
+                    ctx.fillStyle = colors[idx];
+
+                    // 字符：循环使用
+                    const ch = chars[charIndex++ % chars.length];
+                    ctx.fillText(ch, c * charW, r * charH);
+                }
+            }
+
+            // 缩放 & 帧计数
+            zoom *= zoomStep;
+            frame++;
+            if (frame >= maxFrame) {
+                // 平均 FPS
+                avgEl.textContent = (fpsSum / frame).toFixed(1);
+                // 重置
+                frame = 0;
+                zoom = 1;
+                fpsSum = 0;
+                charIndex = 0;
+            }
+
+            requestAnimationFrame(draw);
+        }
+        requestAnimationFrame(draw);
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot – 静夜思</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            /* full‑screen canvas */
+            background: #000;
+        }
+
+        #fpsBox {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, .7);
+            border-radius: 8px;
+            font: 12px/14px monospace;
+            color: #000;
+            user-select: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <div id="fpsBox">
+        FPS: <span id="fps">0</span><br>
+        AVG FPS: <span id="avg">0</span><br>
+        CURRENT FRAME: <span id="frame">0/200</span>
+    </div>
+
+    <script>
+        /* ----------  CONFIG  ---------- */
+        const charSize = 8;                 // px
+        const maxFrames = 200;               // frames per loop
+        const zoomFactor = 1.005;             // +0.5 % / frame
+        const maxIter = 20;                // equals color count
+        const centerX = -1.0;              // intersection of main cardioid / period‑2 bulb
+        const centerY = 0.0;
+
+        /* poem unique characters (keep order, remove dup, no punctuation) */
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        const uniqueChars = [...new Set(poem.split(""))].join("");
+
+        /* 20 colors, dark → light (outermost→innermost) */
+        const colors = [
+            "#0f2350", "#17184b", "#1c305c", "#192f60", "#223a70",
+            "#2a4073", "#274a78", "#4a488e", "#4d4398", "#5654a2",
+            "#706caa", "#68699b", "#867ba9", "#8491c3", "#bbbcde",
+            "#bbc8e6", "#ebf6f7", "#e8ecef", "#eaedf7", "#eaf4fc"
+        ];
+
+        /* ----------  CANVAS SETUP  ---------- */
+        const canvas = document.getElementById("c");
+        const ctx = canvas.getContext("2d");
+        let W, H, cols, rows;
+
+        function resize() {
+            canvas.width = W = window.innerWidth;
+            canvas.height = H = window.innerHeight;
+            cols = Math.floor(W / charSize);
+            rows = Math.floor(H / charSize);
+            ctx.font = `${charSize}px monospace`;
+            ctx.textBaseline = "top";
+        }
+        window.addEventListener("resize", resize);
+        resize();
+
+        /* ----------  FPS MONITOR  ---------- */
+        const fpsEl = document.getElementById("fps");
+        const avgEl = document.getElementById("avg");
+        const fEl = document.getElementById("frame");
+
+        let frame = 0;
+        let startT = performance.now();
+        let lastT = startT;
+        let sumFps = 0;
+
+        /* ----------  RENDER LOOP  ---------- */
+        let scale = 2.0;                      // chosen so Mandelbrot ≈50 % screen at start
+
+        function render() {
+            const now = performance.now();
+            const dt = now - lastT;
+            const fps = 1000 / dt;
+            lastT = now;
+            fpsEl.textContent = fps.toFixed(1);
+            sumFps += fps;
+
+            ctx.clearRect(0, 0, W, H);
+
+            // iterate over grid
+            for (let gy = 0; gy < rows; gy++) {
+                const im = (gy - rows / 2) / (0.5 * scale * rows) + centerY;
+                for (let gx = 0; gx < cols; gx++) {
+                    const re = (gx - cols / 2) / (0.5 * scale * cols) + centerX;
+
+                    // Mandelbrot iterations
+                    let x = 0, y = 0, iter = 0;
+                    while (x * x + y * y <= 4 && iter < maxIter) {
+                        const xt = x * x - y * y + re;
+                        y = 2 * x * y + im;
+                        x = xt;
+                        iter++;
+                    }
+                    if (iter === maxIter) {
+                        // point is inside main set or bulb → leave blank
+                        continue;
+                    }
+
+                    // choose color & char
+                    const colorIdx = maxIter - 1 - iter;      // outer = dark
+                    ctx.fillStyle = colors[colorIdx];
+                    const char = uniqueChars[(iter + gx + gy) % uniqueChars.length];
+                    ctx.fillText(char, gx * charSize, gy * charSize);
+                }
+            }
+
+            // update UI
+            fEl.textContent = `${frame + 1}/${maxFrames}`;
+
+            /* -------- ZOOM & LOOP -------- */
+            scale *= zoomFactor;
+            frame++;
+            if (frame === maxFrames) {
+                const avgFps = sumFps / maxFrames;
+                avgEl.textContent = avgFps.toFixed(1);
+                // reset
+                frame = 0;
+                scale = 2.0;
+                sumFps = 0;
+                lastT = performance.now();
+            }
+
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+
+</html>

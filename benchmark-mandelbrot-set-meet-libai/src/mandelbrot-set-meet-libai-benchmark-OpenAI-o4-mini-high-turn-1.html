@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: block;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 6px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            color: #000;
+            font: 12px monospace;
+            line-height: 1.3em;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <div id="info">
+        FPS: --<br>
+        AVG FPS: --<br>
+        CURRENT FRAME: 0/200
+    </div>
+    <script>
+        (function () {
+            // poem and dedupe
+            var original = '床前明月光，疑是地上霜。举头望明月，低头思故乡。';
+            var chars = [];
+            for (var i = 0; i < original.length; i++) {
+                var ch = original.charAt(i);
+                if (/[\u4e00-\u9fa5]/.test(ch) && chars.indexOf(ch) < 0) {
+                    chars.push(ch);
+                }
+            }
+            // color palette (light → dark)
+            var colors = [
+                '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7',
+                '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9',
+                '#68699b', '#706caa', '#5654a2', '#4d4398',
+                '#4a488e', '#274a78', '#2a4073', '#223a70',
+                '#192f60', '#1c305c', '#17184b', '#0f2350'
+            ];
+            var canvas = document.getElementById('c');
+            var ctx = canvas.getContext('2d');
+            var info = document.getElementById('info');
+            // config
+            var cellSize = 8;
+            var centerX = -0.75, centerY = 0.0;
+            var initialZoom = 0.5, zoom = initialZoom;
+            var maxIter = 20;
+            var frameCount = 0;
+            var frameTimes = [];
+            var avgFPS = 0;
+            var lastTime = performance.now();
+            code
+
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                ctx.font = cellSize + 'px monospace';
+                ctx.textBaseline = 'top';
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // membership tests
+            function inMainCardioid(cx, cy) {
+                // cardioid test
+                var p = Math.sqrt((cx - 0.25) * (cx - 0.25) + cy * cy);
+                return cx < p - 2 * p * p + 0.25;
+            }
+            function inPeriod2Bulb(cx, cy) {
+                // period-2 bulb: center -1,0 radius 1/4
+                var dx = cx + 1, dy = cy;
+                return dx * dx + dy * dy < 0.0625;
+            }
+
+            function drawFractal() {
+                var w = canvas.width, h = canvas.height;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, w, h);
+                var cols = Math.floor(w / cellSize);
+                var rows = Math.floor(h / cellSize);
+                // world extents
+                var rX = (3.5 * zoom) * 0.5;
+                var rY = (2.0 * zoom) * 0.5;
+                var dx = (2 * rX) / cols;
+                var dy = (2 * rY) / rows;
+                var x0 = centerX - rX + dx * 0.5;
+                var y0 = centerY + rY - dy * 0.5;
+                for (var row = 0; row < rows; row++) {
+                    var cy = y0 - row * dy;
+                    for (var col = 0; col < cols; col++) {
+                        var cx = x0 + col * dx;
+                        // leave main cardioid & period bulbs blank
+                        if (inMainCardioid(cx, cy) || inPeriod2Bulb(cx, cy)) {
+                            continue;
+                        }
+                        // iterate
+                        var zx = 0, zy = 0, iter = 0;
+                        while (iter < maxIter && zx * zx + zy * zy <= 4) {
+                            var xt = zx * zx - zy * zy + cx;
+                            zy = 2 * zx * zy + cy;
+                            zx = xt;
+                            iter++;
+                        }
+                        // color: external layers darkest
+                        var t = 1 - iter / maxIter;
+                        var ci = Math.floor(t * (colors.length - 1));
+                        var colr = colors[ci < 0 ? 0 : ci];
+                        // char
+                        var ch = chars[iter % chars.length];
+                        // draw
+                        ctx.fillStyle = colr;
+                        ctx.fillText(ch, col * cellSize, row * cellSize);
+                    }
+                }
+            }
+
+            function updateInfo(fps, avg, cur) {
+                info.innerHTML =
+                    'FPS: ' + fps.toFixed(1) + '<br>' +
+                    'AVG FPS: ' + (avg > 0 ? avg.toFixed(1) : '--') + '<br>' +
+                    'CURRENT FRAME: ' + cur + '/200';
+            }
+
+            function animate(now) {
+                var delta = now - lastTime;
+                lastTime = now;
+                var fps = 1000 / delta;
+                // loop reset
+                if (frameCount >= 200) {
+                    frameCount = 0;
+                    zoom = initialZoom;
+                    frameTimes.length = 0;
+                }
+                // draw fractal
+                drawFractal();
+                // update stats
+                var cur = frameCount + 1;
+                updateInfo(fps, avgFPS, cur);
+                // accumulate
+                frameTimes.push(delta);
+                if (frameCount === 199) {
+                    // after 200th frame
+                    var sum = frameTimes.reduce(function (a, b) { return a + b; }, 0);
+                    var avgFrame = sum / frameTimes.length;
+                    avgFPS = 1000 / avgFrame;
+                }
+                // update for next
+                zoom *= 1.005;
+                frameCount++;
+                requestAnimationFrame(animate);
+            }
+
+            requestAnimationFrame(animate);
+        })();
+    </script>
+</body>
+
+</html>

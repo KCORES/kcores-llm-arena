@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>ASCII Mandelbrot Zoom</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <script>
+        (function () {
+            // ——1. 诗词去重字符（无标点）——
+            const raw = "床前明月光疑是地上霜举头望明月低头思故乡";
+            const chars = [];
+            for (let ch of raw) {
+                if (chars.indexOf(ch) === -1) chars.push(ch);
+            }
+            // ——2. 颜色表（由浅到深）——
+            const colors = [
+                "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6",
+                "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+                "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073",
+                "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+            ];
+            const maxFrames = 200, maxIter = colors.length;
+            const centerRe = -0.75, centerIm = 0;
+            const initialScale = 0.5;
+            const zoomPerFrame = 1 + 0.005;
+            // ——3. Canvas & 状态——
+            const canvas = document.getElementById("c");
+            const ctx = canvas.getContext("2d");
+            let W, H, cols, rows, frame = 0, scale = initialScale;
+            let sumFPS = 0, avgFPS = 0;
+            let lastTime = performance.now();
+            let currFPS = 0;
+            // ——4. 大小计算——
+            function resize() {
+                W = window.innerWidth;
+                H = window.innerHeight;
+                canvas.width = W;
+                canvas.height = H;
+                cols = Math.floor(W / 8);
+                rows = Math.floor(H / 8);
+            }
+            window.addEventListener("resize", resize);
+            resize();
+            ctx.font = "8px monospace";
+            ctx.textBaseline = "top";
+            // ——5. 圆角矩形助手——
+            CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+                if (w < 2 * r) r = w / 2;
+                if (h < 2 * r) r = h / 2;
+                this.beginPath();
+                this.moveTo(x + r, y);
+                this.arcTo(x + w, y, x + w, y + h, r);
+                this.arcTo(x + w, y + h, x, y + h, r);
+                this.arcTo(x, y + h, x, y, r);
+                this.arcTo(x, y, x + w, y, r);
+                this.closePath();
+                return this;
+            };
+            // ——6. 主动画——
+            function draw(time) {
+                // 时间与FPS
+                const dt = time - lastTime;
+                lastTime = time;
+                currFPS = 1000 / dt;
+                sumFPS += currFPS;
+                frame++;
+                // 每帧放大
+                scale *= zoomPerFrame;
+                // 复数平面范围
+                const cW = 3.5 * scale;
+                const cH = cW * rows / cols;
+                const reMin = centerRe - cW / 2;
+                const imMax = centerIm + cH / 2;
+                const dx = cW / (cols - 1);
+                const dy = cH / (rows - 1);
+                // 清屏
+                ctx.clearRect(0, 0, W, H);
+                // 每点迭代
+                for (let i = 0; i < rows; i++) {
+                    const imag = imMax - i * dy;
+                    for (let j = 0; j < cols; j++) {
+                        const real = reMin + j * dx;
+                        // Mandelbrot
+                        let x = 0, y = 0, x2 = 0, y2 = 0, iter = 0;
+                        while (x2 + y2 <= 4 && iter < maxIter) {
+                            y = 2 * x * y + imag;
+                            x = x2 - y2 + real;
+                            x2 = x * x; y2 = y * y;
+                            iter++;
+                        }
+                        if (iter >= maxIter) {
+                            // Main cardioid & bulbs 留空
+                            continue;
+                        }
+                        // 颜色与字符
+                        ctx.fillStyle = colors[colors.length - iter];
+                        const ch = chars[(iter - 1) % chars.length];
+                        ctx.fillText(ch, j * 8, i * 8);
+                    }
+                }
+                // ——7. 左上角指示器——
+                const lines = [
+                    "FPS: " + currFPS.toFixed(1),
+                    "AVG FPS: " + (frame >= maxFrames ? avgFPS.toFixed(1) : "..."),
+                    "CURRENT FRAME: " + frame + "/" + maxFrames
+                ];
+                const pad = 6, lh = 10;
+                let boxW = 0;
+                for (let t of lines) {
+                    boxW = Math.max(boxW, ctx.measureText(t).width);
+                }
+                const boxH = lines.length * lh + pad * 2;
+                ctx.fillStyle = "rgba(255,255,255,0.6)";
+                ctx.roundRect(4, 4, boxW + pad * 2, boxH, 6).fill();
+                ctx.fillStyle = "#000";
+                for (let k = 0; k < lines.length; k++) {
+                    ctx.fillText(lines[k], 4 + pad, 4 + pad + k * lh);
+                }
+                // ——8. 重置循环——
+                if (frame >= maxFrames) {
+                    avgFPS = sumFPS / frame;
+                    frame = 0;
+                    scale = initialScale;
+                    sumFPS = 0;
+                }
+                requestAnimationFrame(draw);
+            }
+            requestAnimationFrame(draw);
+        })();
+    </script>
+</body>
+
+</html>

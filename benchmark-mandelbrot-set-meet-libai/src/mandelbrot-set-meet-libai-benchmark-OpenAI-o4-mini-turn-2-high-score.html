@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <script>
+        (function () {
+            // 配置项
+            const TOTAL_FRAMES = 200;
+            const ZOOM_PER_FRAME = 1.005;   // 每帧放大0.5%
+            const CHAR_SIZE = 8;
+            // 李白《静夜思》去重无标点
+            const ASCII_CHARS = Array.from("床前明月光疑是地上霜举头望低思故乡");
+            // 色阶，由浅到深
+            const COLORS = [
+                "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde",
+                "#8491c3", "#867ba9", "#68699b", "#706caa", "#5654a2", "#4d4398",
+                "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c",
+                "#17184b", "#0f2350"
+            ];
+            // 主心脏与二周期小圆判定公式
+            function inMainCardioid(x, y) {
+                const p = Math.hypot(x - 0.25, y);
+                return x < p - 2 * p * p + 0.25;
+            }
+            function inPeriod2Bulb(x, y) {
+                return (x + 1) * (x + 1) + y * y < 0.0625;
+            }
+
+            // Canvas 与 状态
+            const canvas = document.getElementById("c");
+            const ctx = canvas.getContext("2d");
+            let W, H, cols, rows;
+            let centerX = -0.5, centerY = 0;
+            let scale;            // 像素->复平面比例
+            let frame = 0;
+            let frameTimes = [];
+            let avgFps = 0;
+
+            function resize() {
+                W = canvas.width = window.innerWidth;
+                H = canvas.height = window.innerHeight;
+                cols = Math.ceil(W / CHAR_SIZE);
+                rows = Math.ceil(H / CHAR_SIZE);
+                // 初始将Mandelbrot宽度占屏幕50%，而复平面标准宽约3
+                scale = (W * 0.5) / 3;
+            }
+            window.addEventListener("resize", resize);
+            resize();
+
+            ctx.textBaseline = "top";
+            ctx.font = CHAR_SIZE + "px monospace";
+
+            let lastTime = performance.now();
+            function draw() {
+                const now = performance.now();
+                const delta = now - lastTime;
+                lastTime = now;
+                const fps = 1000 / delta;
+                // 收集FPS
+                if (frame < TOTAL_FRAMES) frameTimes.push(fps);
+                if (frame === TOTAL_FRAMES) {
+                    // 计算平均FPS
+                    const sum = frameTimes.reduce((a, b) => a + b, 0);
+                    avgFps = sum / frameTimes.length;
+                }
+
+                // 清屏
+                ctx.clearRect(0, 0, W, H);
+                // ASCII Mandelbrot
+                // 对每个字符格
+                for (let j = 0; j < rows; j++) {
+                    const y0 = centerY + (j * CHAR_SIZE - H / 2) / scale;
+                    for (let i = 0; i < cols; i++) {
+                        const x0 = centerX + (i * CHAR_SIZE - W / 2) / scale;
+                        // 跳过主心脏与周期2小圆
+                        if (inMainCardioid(x0, y0) || inPeriod2Bulb(x0, y0)) continue;
+                        // Mandelbrot 迭代
+                        let x = 0, y = 0, xt, iter = 0;
+                        const maxIter = COLORS.length;
+                        while (x * x + y * y <= 4 && iter < maxIter) {
+                            xt = x * x - y * y + x0;
+                            y = 2 * x * y + y0;
+                            x = xt;
+                            iter++;
+                        }
+                        // 选择颜色与字符
+                        // map iter=0->COLORS.length-1 darkest, iter=maxIter->lightest
+                        const colIndex = Math.max(0, COLORS.length - 1 - iter);
+                        ctx.fillStyle = COLORS[colIndex];
+                        const ch = ASCII_CHARS[iter % ASCII_CHARS.length];
+                        ctx.fillText(ch, i * CHAR_SIZE, j * CHAR_SIZE);
+                    }
+                }
+
+                // 更新缩放 & 帧计数
+                frame++;
+                scale *= ZOOM_PER_FRAME;
+                if (frame >= TOTAL_FRAMES) {
+                    frame = 0;
+                    frameTimes = [];
+                    avgFps = 0;
+                    // 重设起始缩放
+                    resize();
+                }
+
+                // 绘制左上角信息框
+                const info = [
+                    "FPS: " + fps.toFixed(1),
+                    "AVG FPS: " + (avgFps ? avgFps.toFixed(1) : "--"),
+                    "CURRENT FRAME: " + (frame) + "/" + TOTAL_FRAMES
+                ].join("  |  ");
+                const padding = 6;
+                ctx.font = "14px sans-serif";
+                const metrics = ctx.measureText(info);
+                const boxW = metrics.width + padding * 2;
+                const boxH = 14 + padding * 2;
+                ctx.fillStyle = "rgba(255,255,255,0.7)";
+                roundRect(ctx, 2, 2, boxW, boxH, 6, true, false);
+                ctx.fillStyle = "#000";
+                ctx.fillText(info, padding + 2, padding + 2);
+
+                // 恢复ASCII字体
+                ctx.font = CHAR_SIZE + "px monospace";
+                requestAnimationFrame(draw);
+            }
+
+            // 圆角矩形
+            function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+                if (typeof r === 'number') r = { tl: r, tr: r, br: r, bl: r };
+                ctx.beginPath();
+                ctx.moveTo(x + r.tl, y);
+                ctx.lineTo(x + w - r.tr, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+                ctx.lineTo(x + w, y + h - r.br);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+                ctx.lineTo(x + r.bl, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+                ctx.lineTo(x, y + r.tl);
+                ctx.quadraticCurveTo(x, y, x + r.tl, y);
+                ctx.closePath();
+                if (fill) ctx.fill();
+                if (stroke) ctx.stroke();
+            }
+
+            requestAnimationFrame(draw);
+        })();
+    </script>
+</body>
+
+</html>

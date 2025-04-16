@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Zoom</title>
+    <style>
+        /* reset & full screen */
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <script>
+        (function () {
+            // 1) Poem chars: "静夜思" 去重、保序，无标点
+            var poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+            var used = {};
+            var chars = [];
+            for (var ch of poem) {
+                if (!used[ch]) {
+                    used[ch] = 1;
+                    chars.push(ch);
+                }
+            }
+            // 2) Color ramp (light→dark), we will invert so small-iterations→dark
+            var colors = [
+                "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7",
+                "#bbc8e6", "#bbbcde", "#8491c3", "#867ba9",
+                "#68699b", "#706caa", "#5654a2", "#4d4398",
+                "#4a488e", "#274a78", "#2a4073", "#223a70",
+                "#192f60", "#1c305c", "#17184b", "#0f2350"
+            ];
+            var maxIter = colors.length;
+            var totalFrames = 200;
+            // 3) Zoom center at cardioid/bulb junction:
+            var centerX = -0.75, centerY = 0.0;
+
+            var canvas = document.getElementById("c");
+            var ctx = canvas.getContext("2d");
+
+            var W, H, cols, rows, cell = 8;
+            var fractalCols, initCW, initCH, dx0, dy0;
+            var frame = 0, scale = 1, lastTime = 0, fpsArr = [], avgFPS = 0;
+
+            function onResize() {
+                cancelAnimationFrame(rAF);
+                W = window.innerWidth;
+                H = window.innerHeight;
+                canvas.width = W;
+                canvas.height = H;
+                // grid
+                cols = Math.floor(W / cell);
+                rows = Math.floor(H / cell);
+                // make fractal occupy 50% width in cells:
+                fractalCols = Math.floor(cols / 2);
+                initCW = 3; // initial fractal width in complex-plane
+                initCH = initCW * rows / fractalCols;
+                dx0 = initCW / fractalCols;
+                dy0 = initCH / rows;
+                // reset
+                frame = 0; scale = 1; fpsArr.length = 0; avgFPS = 0;
+                lastTime = performance.now();
+                rAF = requestAnimationFrame(render);
+            }
+
+            // cardioid/bulb test
+            function inCardioidOrBulb(x, y) {
+                // main cardioid
+                var p = Math.hypot(x - 0.25, y);
+                if (p <= 0.5 - 0.5 * (x - 0.25) / p) return true;
+                // period-2 bulb at (-1,0), radius=1/4
+                if ((x + 1) * (x + 1) + y * y <= 0.0625) return true;
+                return false;
+            }
+
+            // draw a rounded rect
+            function roundRect(ctx, x, y, w, h, r) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                ctx.lineTo(x + r, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
+            }
+
+            function render(now) {
+                var dt = (now - lastTime) / 1000;
+                lastTime = now;
+                var fps = dt > 0 ? 1 / dt : 0;
+                if (frame < totalFrames) fpsArr.push(fps);
+                if (frame === totalFrames) {
+                    avgFPS = fpsArr.reduce((a, b) => a + b, 0) / fpsArr.length;
+                }
+
+                ctx.clearRect(0, 0, W, H);
+                ctx.font = cell + "px monospace";
+                ctx.textBaseline = "top";
+
+                // compute current complex-plane bounds
+                var wC = initCW * scale;
+                var hC = initCH * scale;
+                var xMin = centerX - wC / 2;
+                var yMin = centerY - hC / 2;
+                var dx = dx0 * scale;
+                var dy = dy0 * scale;
+
+                // offset to center fractal horizontally
+                var offX = Math.floor((cols - fractalCols) / 2);
+                // full vertical
+                for (var j = 0; j < rows; j++) {
+                    var y0 = yMin + j * dy;
+                    for (var i = 0; i < fractalCols; i++) {
+                        var x0 = xMin + i * dx;
+                        if (inCardioidOrBulb(x0, y0)) {
+                            // leave blank
+                            continue;
+                        }
+                        var x = 0, y = 0, iter = 0;
+                        while (x * x + y * y <= 4 && iter < maxIter) {
+                            var xt = x * x - y * y + x0;
+                            y = 2 * x * y + y0;
+                            x = xt;
+                            iter++;
+                        }
+                        if (iter === maxIter) {
+                            // treat as inside→blank too
+                            continue;
+                        }
+                        // map iteration→color (small iter=dark, large=light)
+                        var idx = Math.floor((iter - 1) / (maxIter - 1) * (colors.length - 1));
+                        var col = colors[(colors.length - 1) - idx];
+                        ctx.fillStyle = col;
+                        var ch = chars[iter % chars.length];
+                        ctx.fillText(ch, (offX + i) * cell, j * cell);
+                    }
+                }
+
+                // draw HUD
+                var lines = [
+                    "FPS: " + fps.toFixed(1),
+                    "AVG FPS: " + (avgFPS ? avgFPS.toFixed(1) : "--"),
+                    "CURRENT FRAME: " + (frame < totalFrames ? frame : totalFrames) + "/" + totalFrames
+                ];
+                ctx.font = "12px sans-serif";
+                // measure box
+                var pad = 5, lh = 14, mxW = 0;
+                for (var L of lines) {
+                    mxW = Math.max(mxW, ctx.measureText(L).width);
+                }
+                var boxW = mxW + pad * 2;
+                var boxH = lines.length * lh + pad * 2;
+                ctx.fillStyle = "rgba(255,255,255,0.6)";
+                roundRect(ctx, 8, 8, boxW, boxH, 6);
+                ctx.fill();
+                ctx.fillStyle = "#000";
+                for (var k = 0; k < lines.length; k++) {
+                    ctx.fillText(lines[k], 8 + pad, 8 + pad + k * lh);
+                }
+
+                // next frame
+                frame++;
+                scale *= 0.995; // zoom in 0.5% per frame
+                if (frame > totalFrames) {
+                    frame = 0; scale = 1;
+                    fpsArr.length = 0;
+                }
+                rAF = requestAnimationFrame(render);
+            }
+
+            var rAF;
+            window.addEventListener("resize", onResize);
+            onResize();
+
+        })();
+    </script>
+</body>
+
+</html>

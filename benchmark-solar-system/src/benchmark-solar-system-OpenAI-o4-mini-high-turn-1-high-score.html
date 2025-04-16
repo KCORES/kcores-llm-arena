@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        // ---- 基本设置 ----
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        let cx = width / 2, cy = height / 2;
+
+        // 离屏 canvas 用于绘制静态轨道
+        const orbitCanvas = document.createElement('canvas');
+        orbitCanvas.width = width;
+        orbitCanvas.height = height;
+        const octx = orbitCanvas.getContext('2d');
+        octx.strokeStyle = 'rgba(255,255,255,0.2)';
+        octx.lineWidth = 1;
+
+        // ---- 天体定义 ----
+        // 太阳
+        const sunDef = {
+            name: 'Sun',
+            radius: 30,
+            colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22']
+        };
+        // 9 颗行星
+        const planetDefs = [
+            { name: 'Mercury', radius: 4, orbitRadius: 54, period: 88, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'] },
+            { name: 'Venus', radius: 7, orbitRadius: 85, period: 225, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'] },
+            { name: 'Earth', radius: 8, orbitRadius: 120, period: 365, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'] },
+            { name: 'Mars', radius: 6, orbitRadius: 154, period: 687, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'] },
+            { name: 'Jupiter', radius: 18, orbitRadius: 198, period: 4333, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'] },
+            { name: 'Saturn', radius: 16, orbitRadius: 252, period: 10759, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'] },
+            { name: 'Uranus', radius: 12, orbitRadius: 300, period: 30687, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'] },
+            { name: 'Neptune', radius: 12, orbitRadius: 344, period: 60190, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'] },
+            { name: 'Pluto', radius: 4, orbitRadius: 380, period: 90560, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'] }
+        ];
+
+        // ---- 离屏预渲染轨道 ----
+        function drawOrbits() {
+            octx.clearRect(0, 0, width, height);
+            octx.strokeStyle = 'rgba(255,255,255,0.2)';
+            octx.lineWidth = 1;
+            planetDefs.forEach(p => {
+                octx.beginPath();
+                octx.arc(cx, cy, p.orbitRadius, 0, Math.PI * 2);
+                octx.stroke();
+            });
+        }
+        drawOrbits();
+
+        // ---- 离屏小画布预渲染星球精灵 ----
+        const planetSprites = {};  // key = name, value = canvas
+        function createSprite(def) {
+            const r = def.radius, d = r * 2;
+            const cvs = document.createElement('canvas');
+            cvs.width = d; cvs.height = d;
+            const c = cvs.getContext('2d');
+            // 四色径向渐变
+            const grad = c.createRadialGradient(r, r, r * 0.1, r, r, r);
+            grad.addColorStop(0, def.colors[0]);
+            grad.addColorStop(0.33, def.colors[1]);
+            grad.addColorStop(0.66, def.colors[2]);
+            grad.addColorStop(1, def.colors[3]);
+            c.fillStyle = grad;
+            c.beginPath();
+            c.arc(r, r, r, 0, Math.PI * 2);
+            c.fill();
+            return cvs;
+        }
+        // 太阳精灵
+        planetSprites['Sun'] = createSprite(sunDef);
+        // 各行星精灵
+        planetDefs.forEach(p => {
+            planetSprites[p.name] = createSprite(p);
+        });
+
+        // ---- Web Worker：位置计算 ----
+        const workerCode = function () {
+            let planets, center;
+            self.onmessage = function (e) {
+                const d = e.data;
+                if (d.cmd === 'init') {
+                    planets = d.planets;
+                    center = { x: d.cx, y: d.cy };
+                }
+                else if (d.cmd === 'calc') {
+                    const day = d.timeDays;
+                    const pos = [];
+                    for (let i = 0; i < planets.length; i++) {
+                        const p = planets[i];
+                        const ang = (2 * Math.PI * day / p.period) % (2 * Math.PI);
+                        pos.push({
+                            x: center.x + p.orbitRadius * Math.cos(ang),
+                            y: center.y + p.orbitRadius * Math.sin(ang)
+                        });
+                    }
+                    self.postMessage({ positions: pos });
+                }
+            };
+        };
+        const blob = new Blob(['(' + workerCode.toString() + ')()'], { type: 'application/javascript' });
+        const worker = new Worker(URL.createObjectURL(blob));
+        // 初始化 worker
+        worker.postMessage({ cmd: 'init', planets: planetDefs, cx: cx, cy: cy });
+        let positions = planetDefs.map(p => ({ x: cx + p.orbitRadius, y: cy }));
+
+        worker.onmessage = function (e) {
+            positions = e.data.positions;
+        };
+
+        // ---- 性能统计 & 时间 ----
+        let lastTime = performance.now();
+        let frameCount = 0, sumFrameTime = 0;
+        const startTime = performance.now();  // 计时起点
+
+        // ---- 调整窗口大小 ----
+        function onResize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cx = width / 2; cy = height / 2;
+            // 重绘轨道并通知 worker 更新中心
+            drawOrbits();
+            worker.postMessage({ cmd: 'init', planets: planetDefs, cx: cx, cy: cy });
+        }
+        window.addEventListener('resize', onResize);
+
+        // ---- 圆角矩形辅助 ----
+        function roundedRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
+        // ---- 主渲染循环 ----
+        function render() {
+            const now = performance.now();
+            let dt = now - lastTime;
+            lastTime = now;
+            if (dt > 1000) dt = 1000;  // 防止 tab 切换后 dt 过大
+            // 地球日推进：1s = 10 地球日
+            const elapsedDays = (now - startTime) * 10 / 1000;
+            // 请求 worker 计算当前位置
+            worker.postMessage({ cmd: 'calc', timeDays: elapsedDays });
+            // 清屏 & 背景
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, width, height);
+            // 绘制轨道
+            ctx.drawImage(orbitCanvas, 0, 0);
+            // 绘制太阳
+            const sr = sunDef.radius;
+            ctx.drawImage(planetSprites['Sun'], cx - sr, cy - sr);
+            // 绘制行星 & 标签
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'white';
+            for (let i = 0; i < planetDefs.length; i++) {
+                const p = planetDefs[i];
+                const pos = positions[i];
+                const sp = planetSprites[p.name];
+                const r = p.radius;
+                ctx.drawImage(sp, pos.x - r, pos.y - r);
+                ctx.fillText(`[${p.name}]`, pos.x + r + 4, pos.y);
+            }
+            // 统计 FPS
+            frameCount++;
+            sumFrameTime += dt;
+            const fps = 1000 / dt;
+            const avgFps = frameCount * 1000 / sumFrameTime;
+            const info = `FPS: ${fps.toFixed(1)}  AVG: ${avgFps.toFixed(1)}  Day: ${elapsedDays.toFixed(1)}`;
+            // 绘制左上角信息
+            ctx.font = '14px monospace';
+            const pad = 6;
+            const tw = ctx.measureText(info).width;
+            const bw = tw + pad * 2;
+            const bh = 20 + pad * 2;
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = 'white';
+            roundedRect(ctx, 10, 10, bw, bh, 6);
+            ctx.fill();
+            ctx.restore();
+            ctx.fillStyle = 'black';
+            ctx.fillText(info, 10 + pad, 10 + pad + 14);
+            // 下一帧
+            requestAnimationFrame(render);
+        }
+
+        // 启动渲染
+        render();
+    </script>
+</body>
+
+</html>

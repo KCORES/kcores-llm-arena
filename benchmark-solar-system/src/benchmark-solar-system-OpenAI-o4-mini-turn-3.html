@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        // 配置数据
+        const planetConfigs = [
+            { name: 'Mercury', colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'], radius: 4, orbit: 80, period: 88 },
+            { name: 'Venus', colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'], radius: 7, orbit: 120, period: 225 },
+            { name: 'Earth', colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'], radius: 8, orbit: 160, period: 365 },
+            { name: 'Mars', colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'], radius: 6, orbit: 200, period: 687 },
+            { name: 'Jupiter', colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'], radius: 15, orbit: 260, period: 4331 },
+            { name: 'Saturn', colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'], radius: 12, orbit: 320, period: 10747 },
+            { name: 'Uranus', colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'], radius: 10, orbit: 380, period: 30589 },
+            { name: 'Neptune', colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'], radius: 10, orbit: 440, period: 59800 },
+            { name: 'Pluto', colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'], radius: 4, orbit: 500, period: 90560 }
+        ];
+        const sunConfig = { colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'], radius: 40 };
+        // 初始化 Canvas
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let W = canvas.width = window.innerWidth;
+        let H = canvas.height = window.innerHeight;
+        let cx = W / 2, cy = H / 2;
+
+        // 离屏 Canvas 用于轨道线
+        let orbitCanvas = document.createElement('canvas');
+        let orbitCtx = orbitCanvas.getContext('2d');
+        function drawOrbits() {
+            orbitCanvas.width = W; orbitCanvas.height = H;
+            orbitCtx.clearRect(0, 0, W, H);
+            orbitCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+            orbitCtx.lineWidth = 1;
+            for (let p of planetConfigs) {
+                orbitCtx.beginPath();
+                orbitCtx.arc(cx, cy, p.orbit, 0, Math.PI * 2);
+                orbitCtx.stroke();
+            }
+        }
+        drawOrbits();
+
+        // 工具：创建像素化填充图案
+        function makePattern(colors) {
+            let pc = document.createElement('canvas');
+            pc.width = pc.height = 2;
+            let pcx = pc.getContext('2d');
+            // 四象限
+            pcx.fillStyle = colors[0]; pcx.fillRect(0, 0, 1, 1);
+            pcx.fillStyle = colors[1]; pcx.fillRect(1, 0, 1, 1);
+            pcx.fillStyle = colors[2]; pcx.fillRect(0, 1, 1, 1);
+            pcx.fillStyle = colors[3]; pcx.fillRect(1, 1, 1, 1);
+            return ctx.createPattern(pc, 'repeat');
+        }
+
+        // 为每个天体准备填充 pattern
+        let sunPattern = makePattern(sunConfig.colors);
+        for (let p of planetConfigs) {
+            p.pattern = makePattern(p.colors);
+        }
+
+        // FPS & 时间统计
+        let lastTime = performance.now();
+        let frameCount = 0, fps = 0, fpsSum = 0, fpsSamples = 0;
+
+        // 存储行星位置
+        let planetPositions = new Array(planetConfigs.length).fill({ x: cx, y: cy });
+
+        // 启用 Web Worker 计算位置
+        const workerCode = self.onmessage = function (e) {
+            const { elapsed, w, h, configs } = e.data; const cx = w / 2, cy = h / 2; const scale = 10; // 1秒=10天   let out = [];   for (let p of configs) {     let ang = (elapsed/1000*scale/p.period) * Math.PI*2;     let x = cx + p.orbit * Math.cos(ang);     let y = cy + p.orbit * Math.sin(ang);     out.push({x,y});   }   self.postMessage(out); };;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const worker = new Worker(URL.createObjectURL(blob));
+            worker.onmessage = function (e) {
+                planetPositions = e.data;
+            };
+
+            // 主循环
+            let startTime = performance.now();
+            function animate(now) {
+                let dt = now - lastTime;
+                lastTime = now;
+                fps = 1000 / dt;
+                frameCount++;
+                fpsSum += fps; fpsSamples++;
+
+                let elapsed = now - startTime;
+                // 请求 Worker 计算
+                worker.postMessage({ elapsed, w: W, h: H, configs: planetConfigs });
+
+                // 绘制
+                ctx.clearRect(0, 0, W, H);
+                // 轨道
+                ctx.drawImage(orbitCanvas, 0, 0);
+                // 太阳
+                ctx.beginPath();
+                ctx.fillStyle = sunPattern;
+                ctx.arc(cx, cy, sunConfig.radius, 0, Math.PI2);
+                ctx.fill();
+                // 行星
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.font = '12px sans-serif';
+                for (let i = 0; i < planetConfigs.length; i++) {
+                    let p = planetConfigs[i], pos = planetPositions[i];
+                    // 星球
+                    ctx.beginPath();
+                    ctx.fillStyle = p.pattern;
+                    ctx.arc(pos.x, pos.y, p.radius, 0, Math.PI2);
+                    ctx.fill();
+                    // 标签
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(p.name, pos.x + p.radius + 4, pos.y);
+                }
+                // 计数器背景
+                const pad = 6, lineH = 18;
+                const lines = [
+                    'FPS: ' + fps.toFixed(1),
+                    'AVG FPS: ' + (fpsSum / fpsSamples).toFixed(1),
+                    'Earth Day: ' + Math.floor(elapsed / 100010)
+                ];
+                let boxW = 0;
+                ctx.font = '14px sans-serif';
+                for (let l of lines) {
+                    boxW = Math.max(boxW, ctx.measureText(l).width);
+                }
+                boxW += pad2;
+                let boxH = lines.length * lineH + pad * 2;
+                ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                ctx.roundRect(10, 10, boxW, boxH, 6);
+                ctx.fill();
+                // 写文字
+                ctx.fillStyle = '#000';
+                for (let i = 0; i < lines.length; i++) {
+                    ctx.fillText(lines[i], 10 + pad, 10 + pad + (i + 0.5) * lineH);
+                }
+
+                requestAnimationFrame(animate);
+            }
+
+            // Canvas roundRect polyfill
+            if (!CanvasRenderingContext2D.prototype.roundRect) {
+                CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+                    if (typeof r === 'undefined') r = 5;
+                    this.beginPath();
+                    this.moveTo(x + r, y);
+                    this.lineTo(x + w - r, y);
+                    this.quadraticCurveTo(x + w, y, x + w, y + r);
+                    this.lineTo(x + w, y + h - r);
+                    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                    this.lineTo(x + r, y + h);
+                    this.quadraticCurveTo(x, y + h, x, y + h - r);
+                    this.lineTo(x, y + r);
+                    this.quadraticCurveTo(x, y, x + r, y);
+                    this.closePath();
+                    return this;
+                };
+            }
+
+            // 处理窗口尺寸变化
+            window.addEventListener('resize', () => {
+                W = canvas.width = window.innerWidth;
+                H = canvas.height = window.innerHeight;
+                cx = W / 2; cy = H / 2;
+                drawOrbits();
+            });
+
+            requestAnimationFrame(animate);
+    </script>
+
+</body>
+
+</html>

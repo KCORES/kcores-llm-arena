@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>HTML5 Canvas Solar System</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            /* full‑screen canvas */
+            background: #000;
+            /* deep space */
+        }
+
+        /* FPS & Earth‑Day panel */
+        #hud {
+            position: fixed;
+            left: 10px;
+            top: 10px;
+            font: 12px/1.4 monospace;
+            color: #000;
+            padding: 6px 8px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, .6);
+            z-index: 5;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="space"></canvas>
+    <div id="hud">FPS: --<br>AVG FPS: --<br>Earth Day: 0</div>
+
+    <script>
+        // =================== CONSTANTS =========================
+        const TWO_PI = Math.PI * 2;
+        const DAYS_PER_SEC = 10;              // time compression: 1 real sec = 10 earth days
+
+        /* Planet meta data ************************************************************
+         * radius       : visual radius in px
+         * colors       : 4 color stops
+         * period       : orbital period (earth days)
+         * idx          : order from the Sun (0 = Mercury)
+         *******************************************************************************/
+        const PLANETS = [
+            { name: 'Mercury', radius: 4, period: 88, colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'] },
+            { name: 'Venus', radius: 6, period: 225, colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'] },
+            { name: 'Earth', radius: 6, period: 365, colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'] },
+            { name: 'Mars', radius: 5, period: 687, colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'] },
+            { name: 'Jupiter', radius: 12, period: 4333, colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'] },
+            { name: 'Saturn', radius: 10, period: 10759, colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'] },
+            { name: 'Uranus', radius: 8, period: 30687, colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'] },
+            { name: 'Neptune', radius: 8, period: 60190, colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'] },
+            { name: 'Pluto', radius: 3, period: 90560, colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'] }
+        ];
+
+        // Sun info (separate from planets array)
+        const SUN = { name: 'Sun', radius: 40, colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'] };
+
+        // =================== CANVAS INITIALISATION =========================
+        const canvas = document.getElementById('space');
+        const ctx = canvas.getContext('2d');
+
+        // off‑screen canvas for static orbit circles
+        let staticCanvas = document.createElement('canvas');
+        let staticCtx = staticCanvas.getContext('2d');
+
+        let W, H, centerX, centerY, orbitBaseGap;
+
+        // =================== HUD =========================
+        const hud = document.getElementById('hud');
+        let fps = 0, avgFps = 0, frameCount = 0, fpsSum = 0, lastFpsTime = performance.now();
+        let simDay = 0;
+
+        // =================== WORKER =========================
+        /* Build worker code as Blob so we stay in one HTML file */
+        const workerCode = `
+self.TWO_PI=Math.PI*2;
+let planets=[],baseGap=0;
+onmessage=e=>{
+    const d=e.data;
+    if(d.type==='init'){
+        planets=d.planets;
+        baseGap=d.baseGap;
+        return;
+    }
+    if(d.type==='tick'){
+        const day=d.day;
+        const res=planets.map((p,i)=>{
+            const angle= (day/p.period) * self.TWO_PI;
+            const r=baseGap*(i+1);
+            return {name:p.name,x:r*Math.cos(angle),y:r*Math.sin(angle)};
+        });
+        self.postMessage({positions:res,day});
+    }
+}`;
+        const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+        const worker = new Worker(URL.createObjectURL(workerBlob));
+
+        // =================== PREPARE GRADIENTS =========================
+        function createPlanetGradient(colors, radius) {
+            const g = ctx.createRadialGradient(0, 0, radius * 0.1, 0, 0, radius);
+            g.addColorStop(0, colors[0]);
+            g.addColorStop(0.4, colors[1]);
+            g.addColorStop(0.7, colors[2]);
+            g.addColorStop(1, colors[3]);
+            return g;
+        }
+        SUN.fill = createPlanetGradient(SUN.colors, SUN.radius);
+        PLANETS.forEach(p => p.fill = createPlanetGradient(p.colors, p.radius));
+
+        // =================== RESIZE & ORBITS DRAW =========================
+        function resize() {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+            staticCanvas.width = W;
+            staticCanvas.height = H;
+            centerX = W / 2;
+            centerY = H / 2;
+            orbitBaseGap = Math.min(W, H) / 2 * 0.8 / (PLANETS.length + 1); // +1 ensures roomy gap
+
+            // draw orbit lines (once)
+            staticCtx.clearRect(0, 0, W, H);
+            staticCtx.strokeStyle = 'rgba(255,255,255,.3)';
+            staticCtx.lineWidth = 1;
+            PLANETS.forEach((p, i) => {
+                staticCtx.beginPath();
+                staticCtx.arc(centerX, centerY, orbitBaseGap * (i + 1), 0, TWO_PI);
+                staticCtx.stroke();
+            });
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // init worker
+        worker.postMessage({ type: 'init', planets: PLANETS, baseGap: orbitBaseGap });
+
+        // =================== MAIN LOOP =========================
+        let lastTime = performance.now();
+        function animate(now) {
+            const dt = (now - lastTime) / 1000;   // delta time in seconds
+            lastTime = now;
+
+            // --- simulation time advance ---
+            const dayInc = dt * DAYS_PER_SEC;
+            simDay += dayInc;
+
+            // --- request positions from worker ---
+            worker.postMessage({ type: 'tick', day: simDay });
+
+            // --- fps calculation every second ---
+            fps = 1 / dt;
+            fpsSum += fps;
+            frameCount++;
+            if (now - lastFpsTime >= 1000) {
+                avgFps = fpsSum / frameCount;
+                hud.innerHTML =
+                    'FPS: ' + fps.toFixed(1) + '<br>' +
+                    'AVG FPS: ' + avgFps.toFixed(1) + '<br>' +
+                    'Earth Day: ' + Math.floor(simDay);
+                fpsSum = 0; frameCount = 0; lastFpsTime = now;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // =================== RENDER AFTER WORKER RESPONDS =========================
+        let latestPositions = [];
+        worker.onmessage = e => {
+            latestPositions = e.data.positions;
+            renderScene();
+        };
+
+        // draw everything (planets, labels, sun, static layer)
+        function renderScene() {
+            // draw static layer
+            ctx.clearRect(0, 0, W, H);
+            ctx.drawImage(staticCanvas, 0, 0);
+
+            ctx.save();
+            ctx.translate(centerX, centerY);
+
+            // --- draw Sun ---
+            ctx.fillStyle = SUN.fill;
+            ctx.beginPath();
+            ctx.arc(0, 0, SUN.radius, 0, TWO_PI);
+            ctx.fill();
+            ctx.closePath();
+            ctx.restore();
+
+            // --- draw planets & labels ---
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.font = '12px monospace';
+            ctx.fillStyle = '#fff';
+
+            latestPositions.forEach(planet => {
+                // find visual props
+                const p = PLANETS.find(pl => pl.name === planet.name);
+                if (!p) return;
+                const x = centerX + planet.x;
+                const y = centerY + planet.y;
+
+                // planet body
+                ctx.fillStyle = p.fill;
+                ctx.beginPath();
+                ctx.arc(x, y, p.radius, 0, TWO_PI);
+                ctx.fill();
+                ctx.closePath();
+
+                // label background
+                const label = '[' + p.name + ']';
+                const metrics = ctx.measureText(label);
+                const padding = 4;
+                const labelW = metrics.width + padding * 2;
+                const labelH = 16;
+                ctx.fillStyle = 'rgba(255,255,255,.6)';
+                ctx.fillRect(x - labelW / 2, y - p.radius - labelH - 6, labelW, labelH);
+                // label text
+                ctx.fillStyle = '#000';
+                ctx.fillText(label, x, y - p.radius - 6);
+            });
+        }
+
+        // kick‑off
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>

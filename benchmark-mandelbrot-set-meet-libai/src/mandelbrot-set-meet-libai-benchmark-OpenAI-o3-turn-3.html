@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot – 李白·静夜思</title>
+    <style>
+        /* fullscreen canvas */
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            height: 100%;
+            width: 100%;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* left‑top FPS panel */
+        #stats {
+            position: fixed;
+            left: 10px;
+            top: 10px;
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, .6);
+            border-radius: 8px;
+            font: 12px/1 monospace;
+            color: #000;
+            z-index: 9999;
+            white-space: pre;
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="cv"></canvas>
+    <div id="stats"></div>
+
+    <script>
+        /* ----------  Const definitions  ---------- */
+        const POEM = [...'床前明月光疑是地上霜举头望低思故乡'];      // de‑duplicated poem chars
+        const COLORS = [                                                // light → dark
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6', '#bbbcde',
+            '#8491c3', '#867ba9', '#68699b', '#706caa', '#5654a2', '#4d4398',
+            '#4a488e', '#274a78', '#2a4073', '#223a70', '#192f60', '#1c305c',
+            '#17184b', '#0f2350'
+        ].reverse();                                                    // we need dark (outer) → light (inner)
+
+        /* ----------  DOM & canvas setup  ---------- */
+        const canvas = document.getElementById('cv');
+        const ctx = canvas.getContext('2d');
+        ctx.font = '8px monospace';   // 8 px font
+        ctx.textBaseline = 'top';
+        ctx.imageSmoothingEnabled = false;
+
+        const statsEl = document.getElementById('stats');
+
+        /* ----------  Helpers  ---------- */
+        // Resize canvas to full‑screen
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // FPS helpers
+        let lastTime = performance.now();
+        let frame = 0;
+        let avgFps = 0;
+        function updateStats(now) {
+            const fps = 1000 / (now - lastTime);
+            lastTime = now;
+            avgFps += fps;
+            statsEl.textContent =
+                `FPS: ${fps.toFixed(1)}
+AVG FPS: ${frame ? (avgFps / frame).toFixed(1) : '—'}
+CURRENT FRAME: ${frame % 200 + 1}/200`;
+        }
+
+        /* ----------  Mandelbrot parameters  ---------- */
+        const MAX_ITER = 50;             // iteration depth (performance tune)
+        const CHAR_SIZE = 8;              // 8 px grid
+        const BASE_ZOOM_PIXPU = ( // 让主图初始宽度≈屏幕 50%
+            0.5 * canvas.width / 3   // 3 复平面单位≈曼德布罗特宽度
+        );
+        const CENTER_X = -0.75;  // cardioid & period‑2 bulb junction
+        const CENTER_Y = 0.0;
+
+        let zoomExp = 0;           // zoom exponent, real zoom = 1.005^zoomExp
+        let poemIdx = 0;
+
+        /* ----------  Main render loop  ---------- */
+        function render(now) {
+            requestAnimationFrame(render);
+            updateStats(now);
+
+            // 每 200 帧重置
+            if (frame >= 200) {
+                avgFps = 0;
+                frame = 0;
+                zoomExp = 0;
+            }
+
+            // 计算当前缩放
+            const zoom = Math.pow(1.005, zoomExp);
+            zoomExp++;
+
+            // 计算字符网格尺寸
+            const cols = Math.floor(canvas.width / CHAR_SIZE);
+            const rows = Math.floor(canvas.height / CHAR_SIZE);
+
+            // 预计算单位换算
+            const pixPerUnit = BASE_ZOOM_PIXPU * zoom;
+            const invPPU = 1 / pixPerUnit;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 主循环：按 8x8 网格采样复平面
+            for (let y = 0; y < rows; y++) {
+                // 先算一次 Im 部分，节约开销
+                const im0 = CENTER_Y + ((y - rows / 2) * CHAR_SIZE + CHAR_SIZE / 2) * invPPU;
+                for (let x = 0; x < cols; x++) {
+                    const re0 = CENTER_X + ((x - cols / 2) * CHAR_SIZE + CHAR_SIZE / 2) * invPPU;
+
+                    // Mandelbrot escape‑time
+                    let zr = 0, zi = 0, iter = 0;
+                    while (iter < MAX_ITER) {
+                        const zr2 = zr * zr - zi * zi + re0;
+                        const zi2 = 2 * zr * zi + im0;
+                        zr = zr2; zi = zi2;
+                        if (zr * zr + zi * zi > 4) break;
+                        iter++;
+                    }
+
+                    if (iter === MAX_ITER) continue;          // inside set → 留空
+
+                    // 着色：outer 深色 → inner 浅色
+                    const colorIdx = Math.floor((1 - iter / MAX_ITER) * (COLORS.length - 1));
+                    ctx.fillStyle = COLORS[colorIdx];
+
+                    // 循环取诗词字符
+                    ctx.fillText(POEM[poemIdx], x * CHAR_SIZE, y * CHAR_SIZE);
+                    poemIdx = (poemIdx + 1) % POEM.length;
+                }
+            }
+
+            frame++;
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+
+</html>
