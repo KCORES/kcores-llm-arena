@@ -284,7 +284,7 @@ def main(filter_keyword=None):
     # 示例：使用包含 "Mistral" 的模型 (根据你的要求)
     if filter_keyword is None:
         filter_keyword = input("\n请输入要筛选的模型关键字（也可作为模型制造商前缀）（例如 'Mistral','OpenAI'），或直接按回车以选择所有模型: ").strip()
-        need_replace=input("是否需要去除模型制造商前缀？（请确保你的模型以提供商名称开始，例如OpenAI-GPT-4.1，Mistral-ministral-3b-latest）(y/n): ").strip().lower() == 'y'
+        need_replace=input("保存代码文件时是否需要去除模型制造商前缀？（请确保你的模型以模型制造商商名称开始，例如Mistral-ministral-3b-latest，去除后变为ministral-3b-latest）(y/n): ").strip().lower() == 'y'
     selected_models = [m for m in all_models if m.lower().strip().startswith(filter_keyword.lower())]
 
 
