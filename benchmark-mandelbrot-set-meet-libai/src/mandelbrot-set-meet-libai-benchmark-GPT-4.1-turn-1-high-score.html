@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot - 静夜思</title>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #181A1B;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #181A1B;
+            /* 提高对比度 */
+        }
+
+        /* 让文本选择不可用，防止出现选区 */
+        ::selection {
+            background: transparent;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="mandel"></canvas>
+    <script>
+        /************ 1. 诗词处理 ************/
+        const poem_raw = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+        // 过滤掉所有非汉字，并去重，保留原顺序
+        function uniquePoemChars(text) {
+            let used = new Set(), res = [];
+            for (let c of text) {
+                // 只保留汉字
+                if (/[\u4E00-\u9FA5]/.test(c) && !used.has(c)) {
+                    used.add(c); res.push(c);
+                }
+            }
+            return res.join("");
+        }
+        const poem_chars = uniquePoemChars(poem_raw); // "床前明月光疑是地上霜举头望低思故乡"
+        const poem_chars_len = poem_chars.length;
+
+        /************ 2. 配色：20个深浅 ************/
+        const ascii_colors = [
+            "#0f2350", "#17184b", "#1c305c", "#192f60", "#223a70", "#2a4073", "#274a78", "#4a488e", "#4d4398", "#5654a2",
+            "#706caa", "#68699b", "#867ba9", "#8491c3", "#bbbcde", "#bbc8e6", "#ebf6f7", "#e8ecef", "#eaedf7", "#eaf4fc"
+        ];
+        // 越靠后的越浅（深→浅）
+
+        /************ 3. Mandelbrot算法参数 ************/
+        // 字体相关
+        const FONT_SIZE = 8;
+        const FONT_FAM = "'Consolas', 'Monaco', 'Lucida Console', monospace, 'SimSun'"; // 西文字体优先居中
+        // 渲染参数
+        const MAX_ITER = ascii_colors.length; // escape count最大迭代数=配色数
+        const ESCAPE_RADIUS = 4;             // 跳出集合的阈值平方
+        const FRAMES = 200;                  // 200帧
+
+        /************ 4. 屏幕和Canvas自适应 ************/
+        const canvas = document.getElementById('mandel');
+        let dpr = window.devicePixelRatio || 1;
+        let w = 0, h = 0, cols = 0, rows = 0;
+        function resize() {
+            dpr = window.devicePixelRatio || 1;
+            w = window.innerWidth;
+            h = window.innerHeight;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(dpr, dpr);
+            // 以字体8px布局
+            cols = Math.floor(w / FONT_SIZE);
+            rows = Math.floor(h / FONT_SIZE);
+        }
+        const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: true });
+        resize();
+        window.addEventListener('resize', resize);
+
+        /************ 5. Mandelbrot坐标区域、动画参数 ************/
+        // 屏幕长度最小值为main视区
+        function getInitialMandelViewport() {
+            // 以高度和宽度的50%为画面区域
+            // 默认范围 -2.5~1, -1.5~1.5
+            // 以main cardioid与period-2 bulb交点 (x0,y0)为中心，x0 = -0.75, y0=0
+            // 宽:hw, 高:hh
+            const screenRatio = w / h;
+            let regionWidth = 3.5 * 0.5, regionHeight = 3 * 0.5;
+            // 保证不变形
+            if (screenRatio > regionWidth / regionHeight) {
+                regionWidth = regionHeight * screenRatio;
+            } else {
+                regionHeight = regionWidth / screenRatio;
+            }
+            return {
+                cx: -0.75,
+                cy: 0,
+                width: regionWidth,
+                height: regionHeight
+            };
+        };
+
+        /************ 6. FPS 统计 ************/
+        let fps = 0, avgFps = 0, lastFrameTime = performance.now(), frameCnt = 0, fpsStartTime = 0, fpsArray = [];
+
+        /************ 7. Main Cardioid和Bulb判定 ************/
+        /*
+        主心脏体: (x+1)^2 + y^2 <= 1/4
+        Period-2 bulb: (x+1.309)^2 + y^2 <= (1/16)
+        Bulb交界点: x=-0.75, y=0
+        
+        Main cardioid判定:
+        - 当c满足：p = sqrt((x - 0.25)^2 + y^2)
+        - x <= p - 2*p^2 + 0.25
+        
+        也可用如下公式，效率更高：
+        
+        主心脏体： q = (x-0.25)^2 + y^2
+                   c in main cardioid iff q*(q + (x-0.25)) < 0.25*y^2
+        
+        Period-2 bulb: (x+1)^2 + y^2 < 1/16
+        
+        但对于ASCII精度，取 (x+1)^2 + y^2 < 1/16 为period-2 bulb
+        
+        main cardioid取 q < q*(q + (x-0.25)) < 0.25*y^2
+        但其实用 (x-0.25)^2 + y^2 < (1/4) 即可，因判空效果更好，只要列外字符足够。
+        
+        */
+        function inMainCardioid(x, y) {
+            const q = (x - 0.25) * (x - 0.25) + y * y;
+            return q * (q + (x - 0.25)) < 0.25 * y * y;
+            // return ((x - 0.25)**2 + y*y) < 0.25;
+        }
+        function inBulb(x, y) {
+            // period-2 bulb: (x+1)^2 + y^2 < (1/16)
+            return ((x + 1) * (x + 1) + y * y) < 0.0625;
+        }
+
+        /************ 8. 渲染主循环 ************/
+        let frame = 0;
+        let mandelViewport = getInitialMandelViewport();
+        let mandelCache = null; // 本地缓存, 降低重复计算
+        function drawMandelbrot(frameId) {
+            // 动态确定缩放
+            // 每帧放大0.5%，等价于*1.005
+            // 初始的 width/height 是mandelViewport.width/height
+            const zoom = Math.pow(1.005, frameId);
+            const width = mandelViewport.width / zoom;
+            const height = mandelViewport.height / zoom;
+            // 确定每列/行在复平面坐标
+            // 以 mandelViewport.cx,cy为中心
+            const startX = mandelViewport.cx - width / 2;
+            const endX = mandelViewport.cx + width / 2;
+            const startY = mandelViewport.cy - height / 2;
+            const endY = mandelViewport.cy + height / 2;
+            // 用ASCII文本渲染，8x8 block loop
+            // 字体
+            ctx.font = `${FONT_SIZE}px ${FONT_FAM}`;
+            ctx.textBaseline = "top";
+            ctx.textAlign = "left";
+            ctx.clearRect(0, 0, w, h);
+
+            // for性能，字符串数组而不是drawText每个像素
+            // 或直接按行组装字符串，一次输出！但因每字符赋不同颜色，只能 per-char 画
+
+            // 直接遍历每列每行
+            let charIdx = 0;
+            for (let row = 0; row < rows; ++row) {
+                const y = startY + (row / rows) * (endY - startY);
+                for (let col = 0; col < cols; ++col) {
+                    const x = startX + (col / cols) * (endX - startX);
+                    // 检查是否在main cardioid 或 bulb
+                    if (inMainCardioid(x, y) || inBulb(x, y)) continue;
+                    // 漫德布罗特集判定
+                    let zx = 0, zy = 0, iter = 0;
+                    while (zx * zx + zy * zy <= ESCAPE_RADIUS && iter < MAX_ITER) {
+                        // z = z^2 + c
+                        let xtemp = zx * zx - zy * zy + x;
+                        zy = 2 * zx * zy + y;
+                        zx = xtemp;
+                        iter++;
+                    }
+                    if (iter === MAX_ITER) continue; // "集合内部"的点不画
+                    // 颜色越小越深, 最外围(max escape)用最深色
+                    let colorIdx = MAX_ITER - iter; // 逃逸速度越慢越深
+                    colorIdx = Math.max(0, Math.min(colorIdx, ascii_colors.length - 1));
+                    ctx.fillStyle = ascii_colors[colorIdx];
+                    // 当前字符
+                    const ch = poem_chars[charIdx++ % poem_chars_len];
+                    ctx.fillText(ch, col * FONT_SIZE, row * FONT_SIZE);
+                }
+            }
+        }
+
+        /************ 9. FPS指示器渲染 ************/
+        function drawFPSInfo(fps, avgFps, frame) {
+            const pad = 12, padY = 8, radius = 14, lineh = 22;
+            const texts = [
+                `FPS: ${fps.toFixed(1)}`,
+                `AVG FPS: ${avgFps.toFixed(1)}`,
+                `CURRENT FRAME: ${frame + 1}/200`
+            ];
+            // 计算最长宽
+            ctx.save();
+            ctx.font = "bold 15px " + FONT_FAM;
+            let maxw = 0;
+            for (let t of texts) {
+                const width = ctx.measureText(t).width;
+                if (width > maxw) maxw = width;
+            }
+            // 半透明白底圆角
+            const boxWidth = maxw + pad * 2;
+            const boxHeight = texts.length * lineh + padY;
+            ctx.globalAlpha = 0.70;
+            ctx.fillStyle = "#fff";
+            // 圆角矩形
+            roundRect(ctx, 14, 14, boxWidth, boxHeight, radius);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = "#000";
+            // 绘制文本
+            for (let i = 0; i < texts.length; ++i) {
+                ctx.fillText(texts[i], 14 + pad, 14 + padY + i * lineh + 2);
+            }
+            ctx.restore();
+        }
+        // 画圆角矩形的帮助函数
+        function roundRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        /************ 10. 动画主循环 ************/
+        function tick(now) {
+            // FPS计算
+            let delta = now - lastFrameTime;
+            lastFrameTime = now;
+            fps = 1000 / delta;
+            if (frame === 0) {
+                fpsStartTime = now;
+                fpsArray = [];
+            }
+            fpsArray.push(fps);
+
+            drawMandelbrot(frame);
+            drawFPSInfo(fps, avgFps, frame);
+
+            frame++;
+            if (frame >= FRAMES) {
+                // avgFps
+                let t = now - fpsStartTime;
+                avgFps = 1000 * FRAMES / t; // 每帧动画周期内的平均
+                frame = 0;
+            }
+            requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+
+    </script>
+</body>
+
+</html>

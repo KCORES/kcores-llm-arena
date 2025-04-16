@@ -525,7 +525,57 @@
         "point_12": 0,
         "point_13": 5,
         "Final-Score": 35
+    },
+    {
+        "LLM": "GPT-4.1",
+        "point_1": 5,
+        "point_2": 5,
+        "point_3": 5,
+        "point_4": 5,   
+        "point_5": 0,
+        "point_6": 0,
+        "point_7": 5,
+        "point_8": 0,
+        "point_9": 0,
+        "point_10": 0,
+        "point_11": 5,
+        "point_12": 5,
+        "point_13": 5,
+        "Final-Score": 40
+    },
+    {
+        "LLM": "GPT-4.1-mini",
+        "point_1": 5,
+        "point_2": 0,
+        "point_3": 0,
+        "point_4": 3,
+        "point_5": 0,
+        "point_6": 0,
+        "point_7": 5,
+        "point_8": 0,
+        "point_9": 0,
+        "point_10": 0,
+        "point_11": 0,
+        "point_12": 0,  
+        "point_13": 0,
+        "Final-Score": 13
+    },
+    {
+        "LLM": "GPT-4.1-nano",
+        "point_1": 0,
+        "point_2": 0,
+        "point_3": 0,
+        "point_4": 0,
+        "point_5": 0,
+        "point_6": 0,
+        "point_7": 0,
+        "point_8": 0,
+        "point_9": 0,
+        "point_10": 0,
+        "point_11": 0,
+        "point_12": 0,
+        "point_13": 0,
+        "Final-Score": 0
     }
-    
 ]
 

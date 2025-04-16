@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HTML5 Canvas 太阳系动画</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+            height: 100%;
+            width: 100%;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        #fpsCounter {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(255 255 255 / 0.3);
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: black;
+            font-weight: 600;
+            font-size: 14px;
+            line-height: 1.4;
+            pointer-events: none;
+            z-index: 1000;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fpsCounter">FPS: --<br />AVG FPS: --<br />Earth Day: 0</div>
+
+    <script id="workerScript" type="javascript/worker">
+  // 星球公转计算Web Worker脚本
+  // 传入数据：{ planets: [{orbitalPeriod, angularVelocity, initAngle}], earthDayCount }
+  // 返回 { positions: [{angle}] }
+
+  self.onmessage = function(e) {
+    const data = e.data;
+    const earthDays = data.earthDayCount;
+    const planets = data.planets;
+    // angularVelocity = 2PI / orbitalPeriod (orbitalPeriod in earth days)
+    // 对每个行星计算当前角度 = initAngle + angularVelocity * earthDays
+    let positions = planets.map(p => {
+      let angle = (p.initAngle + p.angularVelocity * earthDays) % (2 * Math.PI);
+      return { angle };
+    });
+    self.postMessage({ positions });
+  };
+</script>
+
+    <script>
+        (() => {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const fpsDiv = document.getElementById('fpsCounter');
+
+            // 屏幕尺寸适配
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // 星体数据及参数定义
+            // 按要求：太阳最大，木星次之等。比例相对，直径单位自己定
+            // 距离单位同样自定，但保持视觉层级关系 轨道间距>星球直径
+            // 太阳中心绘制，所有轨道圆心为画布中心
+
+            // 星球顺序和属性：
+            // 名字 显示名称 直径(px) 轨道半径(px) 颜色4色 定义轨道半径的时候考虑直径及轨道间距要求
+
+            // 轨道之间间距至少 > 比较该轨道直径最大半径*2 + 间距(至少间距为该轨道直径的一半)
+
+            // 数据来源(太阳半径 ~ 50px 太阳设定为最大 50)
+            // 其他星球尺寸：随真实比例缩放，再调整满足视觉美观 & 不重叠
+            // 真实太阳直径约1391400km 木星约139820, 大约是太阳的1/10 ---- 所以木星大约5px, 其它更小
+            // 这里做视觉概念尺寸，以保证效果
+
+            // 设置太阳最大直径50px, 其余行星相对比例自行设定视觉美观且不重叠
+
+            const bodyData = [
+                {
+                    name: "sun", label: "太阳",
+                    diameter: 50,
+                    colors: ['#f2831f', '#f15d22', '#d94125', '#a41d22'],
+                    orbitalRadius: 0, // 中心点
+                    orbitalPeriod: 0, // 太阳不公转
+                },
+                {
+                    name: "mercury", label: "水星",
+                    diameter: 6,
+                    colors: ['#5a5856', '#bfbdbc', '#8c8a89', '#f4f6f8'],
+                    orbitalRadius: 80,
+                    orbitalPeriod: 88,
+                },
+                {
+                    name: "venus", label: "金星",
+                    diameter: 10,
+                    colors: ['#868a8d', '#d9b392', '#f3dbc3', '#414141'],
+                    orbitalRadius: 110,
+                    orbitalPeriod: 225,
+                },
+                {
+                    name: "earth", label: "地球",
+                    diameter: 11,
+                    colors: ['#1f386f', '#0b1725', '#386f61', '#dac0a5'],
+                    orbitalRadius: 145,
+                    orbitalPeriod: 365,
+                },
+                {
+                    name: "mars", label: "火星",
+                    diameter: 9,
+                    colors: ['#dabd9e', '#8c5d4b', '#f27c5f', '#c36d5c'],
+                    orbitalRadius: 185,
+                    orbitalPeriod: 687,
+                },
+                {
+                    name: "jupiter", label: "木星",
+                    diameter: 24,
+                    colors: ['#282411', '#c08137', '#bfb09c', '#a6705b'],
+                    orbitalRadius: 245,
+                    orbitalPeriod: 4333,
+                },
+                {
+                    name: "saturn", label: "土星",
+                    diameter: 22,
+                    colors: ['#f3cf89', '#dab778', '#736b59', '#c1a480'],
+                    orbitalRadius: 300,
+                    orbitalPeriod: 10759,
+                },
+                {
+                    name: "uranus", label: "天王星",
+                    diameter: 18,
+                    colors: ['#3f575a', '#688a8c', '#95bbbe', '#cfecf0'],
+                    orbitalRadius: 350,
+                    orbitalPeriod: 30687,
+                },
+                {
+                    name: "neptune", label: "海王星",
+                    diameter: 18,
+                    colors: ['#647ba5', '#7595bf', '#4e5d73', '#789ebf'],
+                    orbitalRadius: 395,
+                    orbitalPeriod: 60190,
+                },
+                {
+                    name: "pluto", label: "冥王星",
+                    diameter: 8,
+                    colors: ['#d8cbbb', '#f4ebdc', '#402a16', '#a79f97'],
+                    orbitalRadius: 435,
+                    orbitalPeriod: 90560,
+                },
+            ];
+
+            // 时间压缩：1秒=10地球日
+            const TIME_ACCEL = 10;
+
+            // 计算angularVelocity（弧度/地球日）
+            // 太阳无公转，angularVelocity=0
+            bodyData.forEach(body => {
+                if (body.orbitalPeriod > 0) {
+                    body.angularVelocity = (2 * Math.PI) / body.orbitalPeriod;
+                    // 初始角度随机，防止所有行星起点重合，真实偏差模拟
+                    body.initAngle = Math.random() * 2 * Math.PI;
+                } else {
+                    body.angularVelocity = 0;
+                    body.initAngle = 0;
+                }
+            });
+
+            // 离屏canvas画轨道圆环 - 轨道线为半透明白色 (#fff，alpha 0.2左右)
+            const offscreenOrbitCanvas = document.createElement('canvas');
+            const offCtx = offscreenOrbitCanvas.getContext('2d');
+
+            function resizeOrbitCanvas() {
+                offscreenOrbitCanvas.width = canvas.width;
+                offscreenOrbitCanvas.height = canvas.height;
+                drawOrbits();
+            }
+
+            window.addEventListener('resize', () => {
+                resizeOrbitCanvas();
+            });
+
+            function drawOrbits() {
+                offCtx.clearRect(0, 0, offscreenOrbitCanvas.width, offscreenOrbitCanvas.height);
+                offCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                offCtx.lineWidth = 1.2;
+                offCtx.beginPath();
+                const cx = offscreenOrbitCanvas.width / 2;
+                const cy = offscreenOrbitCanvas.height / 2;
+                for (let i = 1; i < bodyData.length; i++) { // 0是太阳
+                    const r = bodyData[i].orbitalRadius;
+                    offCtx.moveTo(cx + r, cy);
+                    offCtx.arc(cx, cy, r, 0, 2 * Math.PI);
+                }
+                offCtx.stroke();
+            }
+
+            resizeOrbitCanvas();
+
+            // 画星球：使用4色像素填充
+            // 实现：将星球分为4等份扇区，分别用4种颜色填充一次，即只绘制1次。
+            // 在这里采用扇形等分法，绘制4个60度扇形，每个扇形填一个颜色。
+
+            // 太阳不旋转, 行星旋转角度由worker计算
+
+            // 按规则，标签文字始终面向摄像机，摄像机为正对屏幕，无三维坐标，故标签都水平绘制，无旋转。
+
+            // --------- Web Worker 启动 --------------
+            let worker;
+            if (window.Worker) {
+                const workerBlob = new Blob(
+                    [document.querySelector('#workerScript').textContent],
+                    { type: 'application/javascript' }
+                );
+                worker = new Worker(URL.createObjectURL(workerBlob));
+            } else {
+                console.warn("浏览器不支持 Web Worker，动画运算可能卡顿");
+            }
+
+            // 管理FPS统计
+            let frames = 0;
+            let fps = 0;
+            let avgFps = 0;
+            let lastTime = performance.now();
+            let startTime = lastTime;
+
+            // 当前地球日计数
+            let earthDayCount = 0;
+
+            // 记录当前行星角度，初始拉取
+            // 初始化给行星角度
+            let planetAngles = new Array(bodyData.length).fill(0);
+            planetAngles[0] = 0; // 太阳永远0
+
+            // 发送数据给worker计算
+            function calcPlanetPositions(days) {
+                if (!worker) return;
+
+                // 传递需要的参数：行星参数数组 (指排除太阳)
+                const planetsForWorker = bodyData.slice(1).map(b => ({
+                    orbitalPeriod: b.orbitalPeriod,
+                    angularVelocity: b.angularVelocity,
+                    initAngle: b.initAngle
+                }));
+
+                worker.postMessage({
+                    planets: planetsForWorker,
+                    earthDayCount: days
+                });
+            }
+            if (worker) {
+                worker.onmessage = function (e) {
+                    const data = e.data;
+                    // data.positions 长度 = 9 (行星数)
+                    // 保存角度到 planetAngles(从索引1开始对应行星) 太阳为0固定
+                    for (let i = 1; i < bodyData.length; i++) {
+                        planetAngles[i] = data.positions[i - 1].angle;
+                    }
+                };
+            }
+
+            // 画单个星球函数: 
+            // 参数: ctx, centerX, centerY, diameter, colors[4], label, angle(行星当前角度), labelOffsetY,
+            // 太阳角度不用处理，行星需要根据公转角度变位置
+            // 星球绘制为4块扇形，每个90度扇形上一色
+            // label在星球外侧稍微偏移画
+
+            // 将行星坐标计算放在worker，得到角度用于定位
+
+            // 纯二维画布视角，标签就绘制在星球上面一定偏移处
+            // “始终面向摄像机”在2D等同于不旋转文字，水平画即可
+
+            function drawPlanet(ctx, cx, cy, diameter, colors, label) {
+                const radius = diameter / 2;
+                const sectors = 4;
+                const sectorAngle = 2 * Math.PI / sectors;
+
+                ctx.save();
+                ctx.translate(cx, cy);
+
+                // 绘制4个扇区像素填充（底色覆盖整个球）
+                for (let i = 0; i < sectors; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.fillStyle = colors[i];
+                    // 角度区间扇形，从 i*sectorAngle 到 (i+1)*sectorAngle
+                    ctx.arc(0, 0, radius, sectorAngle * i, sectorAngle * (i + 1));
+                    ctx.closePath();
+                    ctx.fill();
+                }
+
+                ctx.restore();
+
+                // 标签绘制，中心点cx,cy上方半径+文字偏移
+                const fontSize = Math.max(12, diameter * 0.6);
+                ctx.font = `${fontSize}px "Segoe UI", Tahoma, Geneva, Verdana, sans-serif`;
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(label, cx, cy - radius - 6);
+            }
+
+            // 画太阳 (太阳不绕轨道)
+            // 同drawPlanet
+
+            // 主绘制循环
+            function loop() {
+                // 计算时间与地球日
+                const now = performance.now();
+                const dt = (now - lastTime) / 1000;
+                lastTime = now;
+
+                frames++;
+                const elapsed = now - startTime;
+                if (elapsed >= 1000) {
+                    fps = frames / (elapsed / 1000);
+                    avgFps = avgFps ? (avgFps * 0.9 + fps * 0.1) : fps;
+                    frames = 0;
+                    startTime = now;
+                }
+
+                // 计算当前地球日
+                earthDayCount += dt * TIME_ACCEL;
+
+                // 发送数据给worker计算位置
+                if (worker) {
+                    calcPlanetPositions(earthDayCount);
+                } else {
+                    // 无worker则自行计算角度
+                    for (let i = 1; i < bodyData.length; i++) {
+                        const b = bodyData[i];
+                        planetAngles[i] = (b.initAngle + b.angularVelocity * earthDayCount) % (2 * Math.PI);
+                    }
+                }
+
+                // 清屏
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // 画轨道from离屏canvas
+                ctx.drawImage(offscreenOrbitCanvas, 0, 0);
+
+                // 星球画布中心点
+                const cx = canvas.width / 2;
+                const cy = canvas.height / 2;
+
+                // 先画太阳(中心不动)
+                drawPlanet(ctx, cx, cy, bodyData[0].diameter, bodyData[0].colors, bodyData[0].label);
+
+                // 画行星
+                for (let i = 1; i < bodyData.length; i++) {
+                    let b = bodyData[i];
+                    // 计算当期X,Y, 角度由worker算，行星绕太阳公转。轨道半径为 orbitalRadius
+                    const angle = planetAngles[i];
+
+                    const px = cx + b.orbitalRadius * Math.cos(angle);
+                    const py = cy + b.orbitalRadius * Math.sin(angle);
+                    drawPlanet(ctx, px, py, b.diameter, b.colors, b.label);
+                }
+
+                // 更新计数器显示
+                fpsDiv.innerHTML = `FPS: ${fps.toFixed(1)}<br/>AVG FPS: ${avgFps.toFixed(1)}<br/>Earth Day: ${Math.floor(earthDayCount)}`;
+
+                requestAnimationFrame(loop);
+            }
+
+            requestAnimationFrame(loop);
+        })();
+    </script>
+</body>
+
+</html>

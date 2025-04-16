@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Mandelbrot ASCII动画</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: monospace;
+            background: #fff;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        (function () {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            // 字符集（静夜思去重后）
+            const poem = 床前明月光疑是地上霜举头望明月低头思故乡;
+            // 去重保持顺序
+            const uniqueChars = [];
+            const seen = new Set();
+            for (const ch of poem) {
+                if (!seen.has(ch) && ch !== ' ' && ch !== '。' && ch !== '，' && ch !== '？' && ch !== '！') {
+                    seen.add(ch);
+                    uniqueChars.push(ch);
+                }
+            }
+
+            // 颜色渐变，从浅到深
+            const colorPalette = [
+                "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7",
+                "#bbc8e6", "#bbbcde", "#8491c3", "#867ba9",
+                "#68699b", "#706caa", "#5654a2", "#4d4398",
+                "#4a488e", "#274a78", "#2a4073", "#223a70",
+                "#192f60", "#1c305c", "#17184b", "#0f2350"
+            ];
+
+            let width = window.innerWidth;
+            let height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            window.addEventListener('resize', () => {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                canvas.width = width;
+                canvas.height = height;
+            });
+
+            // 计算字符排列
+            const fontSize = 8;
+            const charactersPerRow = Math.floor(width / fontSize);
+            const charactersPerCol = Math.floor(height / fontSize);
+            const totalChars = charactersPerRow * charactersPerCol;
+
+            // 測試：在canvas上渲染ASCII字符
+            ctx.font = fontSize + 'px monospace';
+            ctx.textBaseline = 'top';
+
+            // 动画参数
+            const maxFrames = 200;
+            let currentFrame = 0;
+            let frameCount = 0;
+            let fps = 0;
+            let fpsCount = 0;
+            let fpsTime = 0;
+            let fpsUpdateTime = 0;
+            let fpsArray = [];
+            let lastTime = performance.now();
+
+            // 旋转中心参数（为了中心对齐主心脏区域，略复杂）
+            let scaleFactor = 1.0; // 初始缩放比例
+            const zoomStep = 1.005; // 每帧放大0.5%
+            const totalZooms = maxFrames; // 放大200次
+            const totalZoomFactor = Math.pow(zoomStep, totalZooms);
+            const centerOffsetX = 0; // 后续可调整
+            const centerOffsetY = 0;
+
+            // 预先准备字符数组
+            const charCycle = [];
+            // 使用旅之前的去重诗字符，循环填充
+            for (let i = 0; i < totalChars; i++) {
+                charCycle.push(uniqueChars[i % uniqueChars.length]);
+            }
+
+            function resize() {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                canvas.width = width;
+                canvas.height = height;
+            }
+
+            // 计算 Mandelbrot 颜色
+            // 一般在 Mandelbrot 中确定是否属于集（超出范围或迭代次数）
+            const maxIter = 50; // 迭代次，越多越细腻
+            // 设置主心脏部分留空（这里不特别处理，只是将区域放在中间）
+            const mandelbrotCenterX = -0.25;
+            const mandelbrotCenterY = 0;
+
+            // 计算区域大小（初始为50%屏幕）
+            const initWidth = 3; // 默认x范围
+            const initHeight = (height / width) * initWidth; // y范围，与宽高比例关联
+            let currWidth = initWidth * 0.5; // 初始50%
+            let currHeight = initHeight * 0.5;
+
+            // 渐变操作
+            const totalZoomsCount = maxFrames; // 200
+            let zoomFactorPerFrame = Math.pow(0.995, totalZoomsCount); // 每帧0.5%
+            let currentZoom = 1.0;
+
+            // 初始化绘制
+            function draw() {
+                const now = performance.now();
+                const delta = now - lastTime;
+                lastTime = now;
+
+                code
+
+                // 计算FPS
+                fpsCount++;
+                fpsTime += delta;
+                if (fpsTime >= 1000) {
+                    fps = fpsCount;
+                    fpsCount = 0;
+                    fpsTime -= 1000;
+                }
+
+                // 清除Canvas，绘制背景
+                ctx.clearRect(0, 0, width, height);
+
+                // 当前缩放
+                currentZoom *= zoomStep;
+                if (currentZoom > totalZoomFactor + 1e-8) {
+                    // 一轮结束后，重置动画
+                    currentZoom = 1;
+                    currentFrame = 0;
+                    // 重新调整区域大小（从50%开始）
+                    currWidth = initWidth * 0.5;
+                    currHeight = initHeight * 0.5;
+                } else {
+                    // 按照放大调整区域
+                    currWidth = initWidth * currentZoom;
+                    currHeight = initHeight * currentZoom;
+                }
+
+                // 定义区域范围
+                const xMin = mandelbrotCenterX - currWidth / 2;
+                const yMin = mandelbrotCenterY - currHeight / 2;
+                const xMax = mandelbrotCenterX + currWidth / 2;
+                const yMax = mandelbrotCenterY + currHeight / 2;
+
+                // 遍历每个字符位置，渲染ASCII字符
+                for (let row = 0; row < charactersPerCol; row++) {
+                    for (let col = 0; col < charactersPerRow; col++) {
+                        const index = row * charactersPerRow + col;
+                        const ch = charCycle[index];
+
+                        // 计算当前点对应的复平面坐标
+                        const x = xMin + (col / charactersPerRow) * (xMax - xMin);
+                        const y = yMin + (row / charactersPerCol) * (yMax - yMin);
+
+                        // 判断是否属于 Mandelbrot 集
+                        const isInside = mandelbrotTest(x, y, maxIter);
+                        if (isInside) {
+                            // 属于 Mandelbrot，不渲染字符（留空或背景色）
+                            continue;
+                        } else {
+                            // 不属于，用对应颜色绘制字符
+                            // 根据距离或迭代次数决定颜色深浅（这里用不同颜色）
+                            // 颜色映射（倒序或正序，外围用深色）
+                            // 这里利用是否在集内来决定颜色，若在集内，用最深色，否则渐浅
+                            // 但题意是外围用最深色，里面逐渐变浅
+                            // 所以可以根据是否快速超出来判断，或者直接每个点用边界判断
+                            // 这里用渐变索引
+                            const colorIndex = Math.floor((maxIter - mandelbrotEscapeTime(x, y, maxIter)) / maxIter * (colorPalette.length - 1));
+                            const color = colorPalette[colorIndex];
+                            ctx.fillStyle = color;
+                            ctx.font = fontSize + 'px monospace';
+                            ctx.fillText(ch, col * fontSize, row * fontSize);
+                        }
+                    }
+                }
+
+                // 画面端遮罩，避免字符重叠使得边界不明显（可选）
+                // 这里不用
+                // Draw FPS & info
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                // 统计信息区域
+                const infoX = 10, infoY = 10;
+                ctx.fillStyle = 'black';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, 200, 70); // 背景半透明
+                ctx.globalAlpha = 0.8;
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, 200, 70);
+                ctx.globalAlpha = 1;
+
+                ctx.fillStyle = 'black';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'left';
+
+                ctx.fillText(`FPS: ${fps}`, 10, 10);
+                // 计算平均fps
+                // 可以在所有帧之后统计平均
+                // 这里先不复杂
+                if (currentFrame === maxFrames) {
+                    // 计算平均
+                    const avgFPS = (fpsArray.reduce((a, b) => a + b, 0)) / fpsArray.length;
+                    ctx.fillText(`AVG FPS: ${avgFPS.toFixed(1)}`, 10, 30);
+                } else {
+                    ctx.fillText(`AVG FPS: --`, 10, 30);
+                }
+                ctx.fillText(`CURRENT FRAME: ${currentFrame}/${maxFrames}`, 10, 50);
+
+                ctx.globalAlpha = 1;
+
+                // 计数
+                currentFrame++;
+                if (currentFrame <= maxFrames) {
+                    fpsArray.push(fps);
+                }
+
+                // 使用requestAnimationFrame继续
+                requestAnimationFrame(draw);
+            }
+
+            // Mandelbrot判定
+            function mandelbrotTest(cx, cy, maxIter) {
+                let zx = 0, zy = 0;
+                for (let i = 0; i < maxIter; i++) {
+                    const zx2 = zxzx - zyzy + cx;
+                    const zy2 = 2zxzy+cy;
+                    zx = zx2;
+                    zy = zy2;
+                    if (zxzx + zyzy > 4) return false; //逃离
+                }
+                return true; //在集内
+            }
+
+            // 计算迭代次数（用于颜色映射）
+            function mandelbrotEscapeTime(cx, cy, maxIter) {
+                let zx = 0, zy = 0;
+                let count = 0;
+                for (let i = 0; i < maxIter; i++) {
+                    const zx2 = zxzx - zyzy + cx;
+                    const zy2 = 2zxzy+cy;
+                    zx = zx2;
+                    zy = zy2;
+                    count++;
+                    if (zxzx + zyzy > 4) break;
+                }
+                return count;
+            }
+
+            // 开始动画
+            draw();
+
+        })();
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Set - 李白</title>
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+            background: #222;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #222;
+        }
+
+        #fpsinfo {
+            position: absolute;
+            left: 20px;
+            top: 20px;
+            z-index: 10;
+            font-family: Consolas, 'Courier New', monospace;
+            font-size: 15px;
+            color: #111;
+            user-select: none;
+            background: rgba(255, 255, 255, 0.80);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
+            padding: 10px 20px 10px 18px;
+            line-height: 1.5em;
+            pointer-events: none;
+            min-width: 205px;
+            min-height: 60px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="fpsinfo">
+        FPS: <span id="fpsval">0</span><br>
+        AVG FPS: <span id="fpsavg">0</span><br>
+        CURRENT FRAME: <span id="framenum">1/200</span>
+    </div>
+    <script>
+        // 1. -------- 诗词处理: 去重保序，删除标点 --------
+        const poem = '床前明月光，疑是地上霜。举头望明月，低头思故乡。';
+        // 保持原顺序但去重，不包含标点
+        const poemChars = (() => {
+            let seen = new Set();
+            let res = [];
+            for (let ch of poem) {
+                if ("，。！？：；,.!?:;（）()\"'".includes(ch)) continue;
+                if (!seen.has(ch)) {
+                    seen.add(ch);
+                    res.push(ch);
+                }
+            }
+            return res;
+        })(); // eg: ['床','前','明','月','光','疑','是','地','上','霜','举','头','望','低','思','故','乡']
+
+        // 2. -------- 颜色从最深到最浅 --------
+        const asciiColors = [
+            '#0f2350', '#17184b', '#1c305c', '#192f60', '#223a70', '#2a4073', '#274a78',
+            '#4a488e', '#4d4398', '#5654a2', '#706caa', '#68699b',
+            '#867ba9', '#8491c3', '#bbbcde', '#bbc8e6', '#ebf6f7', '#e8ecef', '#eaedf7', '#eaf4fc'
+        ];
+        asciiColors.reverse(); // 从外围(最大iter)用最深色（原要求为最深），所以要reverse
+
+        // 3. -------- 基本参数 --------
+        const maxFrame = 200;
+        const zoomStepPerFrame = 1.005;  // 0.5% 放大
+        const charStep = 8;    // 每8px一个汉字，不留间距
+        const fontSizePx = 8;  // 8px 字体
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // -------- FPS & 帧数处理 --------
+        let frame = 0;
+        let frameTimes = [];
+        let avgFps = 0;
+        let lastFrameTime = performance.now();
+
+        // UI
+        const fpsval = document.getElementById('fpsval');
+        const fpsavg = document.getElementById('fpsavg');
+        const framenum = document.getElementById('framenum');
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 4. -------- Mandelbrot 参数/计算区域 --------
+        // 初始包围盒覆盖main cardioid & period bulbs，大小为屏宽/高的50%
+        // 中心点始终位于 main cardioid & period bulbs 交界（即 (-0.75, 0)）
+        const mandelCenter = { x: -0.75, y: 0 }; // 交界点
+        // 初始宽/高（复平面），需考虑屏幕比例
+        function getMandelBox(scale) {
+            // scale: 缩放系数
+            // 在ASCII点阵坐标（左上为(0,0)，右下为(w-1,h-1)）
+            // 保证中心点为(-0.75,0)
+            const baseWidth = 3.0; // 初始复平面宽，一般用 -2~1 = 3
+            let aspect = width / height;
+            let realWidth = baseWidth / 2 * scale; // 50%起步
+            let realHeight = realWidth / aspect;
+            return {
+                left: mandelCenter.x - realWidth / 2,
+                right: mandelCenter.x + realWidth / 2,
+                top: mandelCenter.y - realHeight / 2,
+                bottom: mandelCenter.y + realHeight / 2
+            };
+        }
+        // Main cardioid & period-2 bulb判断：
+        function inMainCardioidOrPeriod2Bulb(cx, cy) {
+            // Main cardioid: (x + 1)^2 + y^2 <= 1/4
+            let q = (cx - 0.25) ** 2 + cy * cy;
+            if (q * (q + (cx - 0.25)) < 0.25 * cy * cy) return true;
+            // period-2 bulb: (x + 1)^2 + y^2 < 1/16
+            let dx = cx + 1;
+            if ((dx * dx + cy * cy) < 0.0625) return true;
+            return false;
+        }
+
+        // 5. -------- 绘制ASCII Mandelbrot集合 --------
+        function drawAsciiMandelbrot(frameId) {
+            // 1. 缩放scale
+            let scale = Math.pow(zoomStepPerFrame, frameId) * 1;
+            // 2. 获取范围
+            let charCols = Math.floor(width / charStep);
+            let charRows = Math.floor(height / charStep);
+
+            let mandelBox = getMandelBox(scale);
+            let realStep = (mandelBox.right - mandelBox.left) / charCols;
+            let imagStep = (mandelBox.bottom - mandelBox.top) / charRows;
+
+            // 3. 渲染ascii字符
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = `${fontSizePx}px "Consolas", "Monaco", "monospace", "微软雅黑"`;
+            ctx.textBaseline = "top";
+            ctx.textAlign = "left";
+            // 遍历像素点阵
+            // 仅计算必要的点阵，提高效率
+            let maxIter = asciiColors.length;
+            let charIdx = 0;
+            for (let row = 0; row < charRows; row++) {
+                let cy = mandelBox.top + row * imagStep;
+                for (let col = 0; col < charCols; col++) {
+                    let cx = mandelBox.left + col * realStep;
+
+                    // 留空Main cardioid/period-2 bulb
+                    if (inMainCardioidOrPeriod2Bulb(cx, cy)) continue;
+
+                    // 判断曼德布罗集
+                    let x = 0, y = 0, iter = 0;
+                    while (x * x + y * y <= 4 && iter < maxIter) {
+                        let xt = x * x - y * y + cx;
+                        y = 2 * x * y + cy;
+                        x = xt;
+                        iter++;
+                    }
+                    let char = poemChars[charIdx % poemChars.length];
+                    charIdx++;
+                    // 曼德布罗集内点不渲染（留空），只有迭代未满的点
+                    if (iter < maxIter) {
+                        // 颜色选取：外围(越临界)颜色深，向内越浅
+                        let colorIdx = maxIter - iter;
+                        if (colorIdx < 0) colorIdx = 0;
+                        if (colorIdx >= asciiColors.length) colorIdx = asciiColors.length - 1;
+                        ctx.fillStyle = asciiColors[colorIdx];
+
+                        ctx.fillText(char, col * charStep, row * charStep);
+                    }
+                }
+            }
+        }
+
+        // 6. -------- 动画主循环、FPS & 帧数统计 --------
+        function render() {
+            let now = performance.now();
+            let delta = now - lastFrameTime;
+            lastFrameTime = now;
+            let fps = 1000 / delta;
+            frameTimes.push(fps);
+            if (frameTimes.length > 30) frameTimes.shift();
+
+            let currFrame = frame + 1;
+            if (currFrame > maxFrame) currFrame = 1;
+            fpsval.textContent = fps.toFixed(1);
+            framenum.textContent = currFrame + '/' + maxFrame;
+
+            // Mandelbrot 动画渲染
+            drawAsciiMandelbrot(frame);
+
+            // 帧累加/重置
+            frame++;
+            if (frame >= maxFrame) {
+                // 计算平均FPS
+                avgFps = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+                fpsavg.textContent = avgFps.toFixed(1);
+                frame = 0;
+                frameTimes = []; // 新一轮统计
+            }
+            else {
+                fpsavg.textContent = avgFps ? avgFps.toFixed(1) : ''; // 保留
+            }
+            requestAnimationFrame(render);
+        }
+
+        // 7. -------- 启动 --------
+        render();
+    </script>
+</body>
+
+</html>
