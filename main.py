@@ -215,11 +215,9 @@ def generate_code(openai_client: OpenAI, model_name: str, prompt: str) -> str | 
         if not code_blocks:
             # 如果没有找到任何代码块，尝试返回原始内容（去除首尾空格）
             # 或者可以返回空字符串，取决于你希望的行为
-            print("  未找到 ```...``` 代码块。将返回原始响应内容。")
-            #重新获取
-            generated_content=generate_code(openai_client,model_name, prompt)
+            print("  未找到 ```...``` 代码块，不符合测试要求，将直接返回None结束本次测试")
             # return "" # 如果希望在找不到时返回空
-            return generated_content.strip() # 返回原始清理后的内容
+            return None # 返回None
 
         # 找到最长的代码块
         # 我们比较的是去除首尾空格后的代码块内容的长度
@@ -300,28 +298,45 @@ def main(filter_keyword=None):
     total_tasks = len(BENCHMARKS) * len(selected_models) * 3
     completed_tasks = 0
 
-    for benchmark_name, prompt in BENCHMARKS.items():
-        print(f"\n处理 Benchmark: {benchmark_name}")
-        for model_name in selected_models:
-            print(f" 使用模型: {model_name}")
+    for model_name in selected_models:
+        print(f" 使用模型: {model_name}")
+        for benchmark_name, prompt in BENCHMARKS.items():
+            model_failed=False
+            if model_failed:
+                break
+            print(f"\n处理 Benchmark: {benchmark_name}")
             for turn in range(1, 4): # 每个项目测试三次
                 print(f"  轮次 {turn}:")
                 completed_tasks += 1
                 print(f"  进度: {completed_tasks}/{total_tasks}")
 
-                if os.path.exists(f"{PATHS[benchmark_name]}/src/{benchmark_name}-{model_name}-turn-{turn}{BENCHMARK_EXTENSIONS[benchmark_name]}"):
-                    print(f"  文件 {benchmark_name}-{model_name}-turn-{turn}{BENCHMARK_EXTENSIONS[benchmark_name]} 已存在，跳过生成。")
+                save_model_name = model_name
+                if need_replace:
+                    save_model_name = model_name[len(filter_keyword) + 1:]
+
+                #检查文件是否存在
+                normal_path=f"{PATHS[benchmark_name]}/src/{benchmark_name}-{save_model_name}-turn-{turn}{BENCHMARK_EXTENSIONS[benchmark_name]}"
+                high_score_path=f"{PATHS[benchmark_name]}/src/{benchmark_name}-{save_model_name}-turn-{turn}-high-score{BENCHMARK_EXTENSIONS[benchmark_name]}"
+                if os.path.exists(normal_path) or os.path.exists(high_score_path):
+                    print(f"  文件 {benchmark_name}-{model_name}-turn-{turn} 已存在，跳过生成。")
                     continue
                 # 生成代码
-                generated_code = generate_code(client, model_name, prompt)
+                generated_code = None
+                retry_count = 0
+                while generated_code is None:
+                    if retry_count in range(1,4):
+                        print(f"  生成代码失败，现在是第{retry_count}次重试")
+                    elif retry_count > 3:
+                        print(f"  生成代码失败，以超出重试次数，跳过此模型和基准")
+                        model_failed=True
+                        break
+                    generated_code=generate_code(client, model_name, prompt)
 
                 if generated_code is not None:
                     # 保存代码到文件
-                    if need_replace:
-                        model_name=model_name[len(filter_keyword)+1:]
-                    save_code_to_file(benchmark_name, model_name, turn, generated_code)
+                    save_code_to_file(benchmark_name, save_model_name, turn, generated_code)
                 else:
-                    print(f"  未能为 {benchmark_name} - {model_name} - 轮次 {turn} 生成代码。")
+                    break
 
                 # 防止过于频繁的 API 调用（可选）
                 time.sleep(1) # 休眠1秒
