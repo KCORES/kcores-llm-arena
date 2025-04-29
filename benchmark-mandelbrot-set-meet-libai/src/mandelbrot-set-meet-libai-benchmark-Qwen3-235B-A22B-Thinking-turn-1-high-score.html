@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            color: black;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="stats">
+        FPS: <span id="fps">0</span><br>
+        AVG FPS: <span id="avgFps">0</span><br>
+        CURRENT FRAME: <span id="frameNum">0</span>/200
+    </div>
+    <script>
+        // Process poem characters
+        function processPoem(text) {
+            const seen = new Set();
+            const result = [];
+            for (const ch of text.replace(/[，。]/g, '')) {
+                if (!seen.has(ch)) {
+                    seen.add(ch);
+                    result.push(ch);
+                }
+            }
+            return result;
+        }
+
+        const poem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+        const chars = processPoem(poem);
+
+        // Colors from shallow to deep, reversed for outer to inner
+        const colors = [
+            '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7',
+            '#bbc8e6', '#bbbcde', '#8491c3', '#867ba9',
+            '#68699b', '#706caa', '#5654a2', '#4d4398',
+            '#4a488e', '#274a78', '#2a4073', '#223a70',
+            '#192f60', '#1c305c', '#17184b', '#0f2350'
+        ].reverse(); // Reverse to map deeper colors to lower iterations
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        // Constants
+        const MAX_ITER = 100;
+        const CENTER_X = -0.75;
+        const CENTER_Y = 0.0;
+        const TOTAL_FRAMES = 200;
+        const ZOOM_FACTOR = 0.995; // Zoom in by 0.5% per frame (dx *= 0.995)
+        const CHAR_SIZE = 8;
+
+        // Dynamic variables
+        let dx = (3.0 * 0.5) / width; // Initial scale to 50% screen width
+        let currentFrame = 0;
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let totalDuration = 0;
+        let avgFps = 0;
+
+        // UI Elements
+        const fpsDisplay = document.getElementById('fps');
+        const avgFpsDisplay = document.getElementById('avgFps');
+        const frameNumDisplay = document.getElementById('frameNum');
+
+        // Mandelbrot functions
+        function isInCardioidOrBulb(x, y) {
+            // Cardioid check
+            const q = (x - 0.25) ** 2 + y ** 2;
+            if (q * (q + x - 0.25) <= 0.25 * y ** 2) return true;
+            // Period-2 bulb check
+            if ((x + 1.0) ** 2 + y ** 2 <= 0.0625) return true; // 1/16 = 0.0625
+            return false;
+        }
+
+        function mandelIter(cx, cy) {
+            let x = 0, y = 0;
+            let iteration = 0;
+            do {
+                const x2 = x * x, y2 = y * y;
+                if (x2 + y2 > 4) break;
+                const twoxy = 2 * x * y;
+                x = x2 - y2 + cx;
+                y = twoxy + cy;
+            } while (++iteration < MAX_ITER);
+            return iteration;
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = `${CHAR_SIZE}px monospace`;
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+
+            const cols = Math.floor(width / CHAR_SIZE);
+            const rows = Math.floor(height / CHAR_SIZE);
+            const hw = width / 2;
+            const hh = height / 2;
+
+            for (let j = 0; j < rows; j++) {
+                for (let i = 0; i < cols; i++) {
+                    const px = (i + 0.5) * CHAR_SIZE;
+                    const py = (j + 0.5) * CHAR_SIZE;
+                    const cx = CENTER_X + (px - hw) * dx;
+                    const cy = CENTER_Y + (hh - py) * dx;
+
+                    if (isInCardioidOrBulb(cx, cy)) continue;
+
+                    const iter = mandelIter(cx, cy);
+                    if (iter === MAX_ITER) continue;
+
+                    // Calculate color index (outer deeper)
+                    const t = iter / MAX_ITER;
+                    const colorIndex = Math.min(
+                        colors.length - 1,
+                        Math.floor((1 - t) * colors.length)
+                    );
+                    ctx.fillStyle = colors[colorIndex];
+
+                    // Get char cyclically
+                    const char = chars[iter % chars.length];
+                    ctx.fillText(char, i * CHAR_SIZE, j * CHAR_SIZE);
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const now = performance.now();
+            const deltaTime = now - lastTime;
+            lastTime = now;
+
+            // Update FPS stats
+            const fps = 1000 / deltaTime;
+            fpsDisplay.textContent = fps.toFixed(1);
+            frameCount++;
+            totalDuration += deltaTime;
+
+            // Frame control
+            if (currentFrame >= TOTAL_FRAMES) {
+                avgFps = frameCount / (totalDuration / 1000);
+                avgFpsDisplay.textContent = avgFps.toFixed(1);
+                frameCount = 0;
+                totalDuration = 0;
+                currentFrame = 0;
+                dx = (3.0 * 0.5) / width; // Reset zoom
+            } else {
+                frameNumDisplay.textContent = currentFrame + 1;
+                dx *= ZOOM_FACTOR;
+                currentFrame++;
+            }
+
+            render();
+        }
+
+        // Initialize animation
+        animate();
+    </script>
+</body>
+
+</html>

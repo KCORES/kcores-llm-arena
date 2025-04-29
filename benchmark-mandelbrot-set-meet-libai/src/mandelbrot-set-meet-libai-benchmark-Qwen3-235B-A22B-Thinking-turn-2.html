@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const poem = "床前明月光疑是地上霜举头望明月低头思故乡";
+        let uniqueChars = [];
+        const seen = {};
+        for (let c of poem) {
+            if (!seen[c]) {
+                seen[c] = true;
+                uniqueChars.push(c);
+            }
+        }
+
+        const colors = [
+            "#eaf4fc", "#eaedf7", "#e8ecef", "#ebf6f7", "#bbc8e6", "#bbbcde", "#8491c3", "#867ba9", "#68699b", "#706caa",
+            "#5654a2", "#4d4398", "#4a488e", "#274a78", "#2a4073", "#223a70", "#192f60", "#1c305c", "#17184b", "#0f2350"
+        ].reverse(); // 从深到浅
+
+        const MAX_ITER = 25;
+        const centerX = -0.75, centerY = 0;
+        const TOTAL_FRAMES = 200;
+        let zoom = 1.0, frame = 0;
+        let initViewWidth = 3.5, initViewHeight = 3.5;
+        let currentFPS = 0, avgFPS = 0, lastTime = 0, frameTimes = [];
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initViewHeight = initViewWidth * canvas.height / canvas.width;
+        }
+
+        function inCardioidOrBulb(re, im) {
+            const re_shift = re - 0.25;
+            const q = re_shift * re_shift + im * im;
+            if (q * (8 * q + re_shift) < 0.375 * im * im) return true;
+            const re_bub = re + 1.0;
+            if (re_bub * re_bub + im * im < 0.0625) return true;
+            return false;
+        }
+
+        function getEscapeTime(re, im) {
+            let zr = re, zi = im;
+            for (let i = 0; i < MAX_ITER; i++) {
+                const r2 = zr * zr, i2 = zi * zi;
+                if (r2 + i2 > 4) break;
+                zi = 2 * zr * zi + im;
+                zr = r2 - i2 + re;
+            }
+            return zr * zr + zi * zi > 4 ? MAX_ITER - Math.log2(Math.log2(zr * zr + zi * zi)) : -1;
+        }
+
+        function draw() {
+            const width = canvas.width, height = canvas.height;
+            const viewWidth = initViewWidth / zoom;
+            const viewHeight = initViewHeight / zoom;
+            const minX = centerX - viewWidth / 2, maxX = centerX + viewWidth / 2;
+            const minY = centerY - viewHeight / 2, maxY = centerY + viewHeight / 2;
+            const dx = maxX - minX, dy = maxY - minY;
+            const cols = Math.ceil(width / 8), rows = Math.ceil(height / 8);
+            const charLen = uniqueChars.length, colorLen = colors.length;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = "8px monospace";
+            ctx.textBaseline = "top";
+
+            for (let row = 0; row < rows; row++) {
+                const py = row * 8 + 4;
+                const im_ratio = py / height;
+                const current_im = maxY - dy * im_ratio;
+                for (let col = 0; col < cols; col++) {
+                    const px = col * 8 + 4;
+                    const re_ratio = px / width;
+                    const current_re = minX + dx * re_ratio;
+
+                    if (inCardioidOrBulb(current_re, current_im)) continue;
+
+                    const escapeTime = getEscapeTime(current_re, current_im);
+                    if (escapeTime < 0 || escapeTime >= MAX_ITER) continue;
+
+                    const colorIdx = Math.floor((1.0 - escapeTime / MAX_ITER) * (colorLen - 1));
+                    ctx.fillStyle = colors[Math.max(0, Math.min(colorIdx, colorLen - 1))];
+                    const charIdx = (col + row) % charLen;
+                    ctx.fillText(uniqueChars[charIdx], col * 8, row * 8);
+                }
+            }
+        }
+
+        function drawUI() {
+            ctx.font = "14px sans-serif";
+            const lines = [
+                `FPS: ${Math.round(currentFPS) || 0}`,
+                `AVG FPS: ${Math.round(avgFPS) || 0}`,
+                `CURRENT FRAME: ${frame + 1}/${TOTAL_FRAMES}`
+            ];
+            const padding = 4;
+            let maxWidth = 0;
+            lines.forEach(line => {
+                const width = ctx.measureText(line).width;
+                if (width > maxWidth) maxWidth = width;
+            });
+            const rectWidth = maxWidth + padding * 2, rectHeight = 16 * lines.length;
+
+            ctx.save();
+            ctx.fillStyle = "rgba(255,255,255,0.5)";
+            ctx.beginPath();
+            ctx.moveTo(padding, 0);
+            ctx.arcTo(rectWidth, 0, rectWidth, rectHeight, 5);
+            ctx.arcTo(rectWidth, rectHeight, 0, rectHeight, 5);
+            ctx.arcTo(0, rectHeight, 0, 0, 5);
+            ctx.arcTo(0, 0, rectWidth, 0, 5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            ctx.fillStyle = "black";
+            lines.forEach((line, i) => ctx.fillText(line, padding, padding + i * 16));
+        }
+
+        function loop(timestamp) {
+            zoom = Math.pow(1.005, frame);
+
+            draw();
+            drawUI();
+
+            const nextFrame = (frame + 1) % TOTAL_FRAMES;
+            frame = nextFrame;
+
+            if (lastTime) {
+                const delta = timestamp - lastTime;
+                frameTimes.push(delta);
+                if (frameTimes.length > TOTAL_FRAMES) frameTimes.shift();
+                currentFPS = 1000 / delta;
+                if (frame === 0) {
+                    const totalTime = frameTimes.reduce((a, b) => a + b, 0);
+                    avgFPS = TOTAL_FRAMES / (totalTime / 1000);
+                }
+            }
+            lastTime = timestamp;
+
+            requestAnimationFrame(loop);
+        }
+
+        window.onload = () => {
+            resize();
+            window.addEventListener("resize", resize);
+            requestAnimationFrame(loop);
+        };
+    </script>
+</body>
+
+</html>

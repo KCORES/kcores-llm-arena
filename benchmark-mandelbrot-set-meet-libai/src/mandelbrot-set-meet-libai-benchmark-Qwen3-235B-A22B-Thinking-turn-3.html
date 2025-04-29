@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ASCII Mandelbrot Animation</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas></canvas>
+    <script>
+        (function () {
+            const canvas = document.querySelector('canvas');
+            const ctx = canvas.getContext('2d');
+            let width, height, halfWidth, halfHeight, cols, rows;
+
+            function resize() {
+                width = canvas.width = window.innerWidth;
+                height = canvas.height = window.innerHeight;
+                halfWidth = width / 2;
+                halfHeight = height / 2;
+                cols = Math.floor(width / 8);
+                rows = Math.floor(height / 8);
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // 处理《静夜思》诗句
+            const rawPoem = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+            const poem = rawPoem.replace(/[^\u4e00-\u9fa5]/g, '');
+            const seenChars = new Set();
+            const chars = [];
+            for (const c of poem) {
+                if (!seenChars.has(c)) {
+                    seenChars.add(c);
+                    chars.push(c);
+                }
+            }
+
+            // 颜色候选集（由浅到深）
+            const colors = [
+                '#eaf4fc', '#eaedf7', '#e8ecef', '#ebf6f7', '#bbc8e6',
+                '#bbbcde', '#8491c3', '#867ba9', '#68699b', '#706caa',
+                '#5654a2', '#4d4398', '#4a488e', '#274a78', '#2a4073',
+                '#223a70', '#192f60', '#1c305c', '#17184b', '#0f2350'
+            ];
+
+            // 曼德博集参数
+            let centerX = -0.75, centerY = 0.0;
+            let scale = 3.0 / Math.max(window.innerWidth, 1024); // 初始缩放
+            let frameCount = 0;
+            const MAX_FRAME = 200;
+            const MAX_ITER = 80;
+
+            // FPS统计
+            let currentFps = 0, avgFps = 0;
+            let frameTimes = [];
+
+            // 判断点是否属于主心形体或周期2气泡
+            function isInMainCardioidOrBulb(x, y) {
+                // 主心形体条件
+                const temp = x - 0.25;
+                const q = temp * temp + y * y;
+                if (q * (q + temp) <= 0.25 * y * y) return true;
+
+                // 周期2气泡条件
+                const dx = x + 1;
+                const bulbQ = dx * dx + y * y;
+                if (bulbQ <= 0.0625) return true; // 0.25^2
+
+                return false;
+            }
+
+            // 曼德博集迭代函数
+            function mandelbrotIterate(c_re, c_im) {
+                let z_re = c_re, z_im = c_im;
+                for (let n = 0; n < MAX_ITER; n++) {
+                    const z_re2 = z_re * z_re;
+                    const z_im2 = z_im * z_im;
+                    if (z_re2 + z_im2 > 4) return n;
+                    // z = z^2 + c
+                    z_im = 2 * z_re * z_im + c_im;
+                    z_re = z_re2 - z_im2 + c_re;
+                }
+                return MAX_ITER;
+            }
+
+            // 绘制单帧
+            function drawFrame() {
+                const charSize = 8;
+                ctx.clearRect(0, 0, width, height);
+                const len = chars.length;
+                const colorCount = colors.length;
+
+                // 设置字体样式
+                ctx.font = '8px monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                for (let j = 0; j < rows; j++) {
+                    for (let i = 0; i < cols; i++) {
+                        // 计算字符块中心的像素坐标
+                        const px = (i * charSize) + charSize / 2;
+                        const py = (j * charSize) + charSize / 2;
+
+                        // 转换为复平面坐标
+                        const c_re = centerX + (px - halfWidth) * scale;
+                        const c_im = centerY + (py - halfHeight) * scale;
+
+                        // 判断是否留空
+                        if (isInMainCardioidOrBulb(c_re, c_im)) continue;
+
+                        // 计算迭代次数
+                        const n = mandelbrotIterate(c_re, c_im);
+                        if (n === MAX_ITER) continue; // 属于集合内部，留空
+
+                        // 颜色映射
+                        const ratio = n / MAX_ITER;
+                        const colorIndex = Math.floor(Math.min((1 - ratio) * colorCount, colorCount - 1));
+                        const color = colors[colorIndex];
+
+                        // 字符索引（循环使用）
+                        const k = (i * 73 + j * 149) % len; // 使用质数混合坐标，增加随机性
+                        const char = chars[k];
+
+                        // 绘制字符
+                        ctx.fillStyle = color;
+                        ctx.fillText(char, px, py);
+                    }
+                }
+            }
+
+            // 圆角矩形 polyfill
+            if (!CanvasRenderingContext2D.prototype.roundRect) {
+                CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+                    this.beginPath();
+                    this.moveTo(x + r, y);
+                    this.lineTo(x + w - r, y);
+                    this.quadraticCurveTo(x + w, y, x + w, y + r);
+                    this.lineTo(x + w, y + h - r);
+                    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                    this.lineTo(x + r, y + h);
+                    this.quadraticCurveTo(x, y + h, x, y + h - r);
+                    this.lineTo(x, y + r);
+                    this.quadraticCurveTo(x, y, x + r, y);
+                    this.closePath();
+                    return this;
+                };
+            }
+
+            // 绘制UI
+            function drawUI() {
+                ctx.save();
+                ctx.font = '14px sans-serif';
+                const lines = [
+                    `FPS: ${currentFps.toFixed(1)}`,
+                    `AVG FPS: ${avgFps.toFixed(1)}`,
+                    `CURRENT FRAME: ${frameCount + 1}/${MAX_FRAME}`
+                ];
+
+                // 计算背景尺寸
+                let maxWidth = 0;
+                for (const line of lines) {
+                    const width = ctx.measureText(line).width;
+                    if (width > maxWidth) maxWidth = width;
+                }
+                const padding = 6;
+                const bgWidth = maxWidth + padding * 2;
+                const bgHeight = 14 * lines.length + padding * (lines.length + 1);
+
+                // 绘制背景
+                ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                ctx.roundRect(0, 0, bgWidth, bgHeight, 5);
+                ctx.fill();
+
+                // 绘制文字
+                ctx.fillStyle = 'black';
+                for (let i = 0; i < lines.length; i++) {
+                    ctx.fillText(lines[i], padding, padding * (i + 1) + 14 * i);
+                }
+                ctx.restore();
+            }
+
+            // 动画循环
+            function animate() {
+                const start = performance.now();
+
+                // 重置动画
+                const reset = frameCount >= MAX_FRAME;
+                if (reset) {
+                    frameCount = 0;
+                    if (frameTimes.length > 0) {
+                        const totalTime = frameTimes.reduce((a, b) => a + b, 0) / 1000;
+                        avgFps = +(totalTime > 0 ? MAX_FRAME / totalTime : 0).toFixed(1);
+                    }
+                    frameTimes = [];
+                }
+
+                // 缩放（放大0.5%）
+                scale *= 0.995;
+
+                // 渲染帧
+                drawFrame();
+
+                // 统计FPS
+                const delta = performance.now() - start;
+                frameTimes.push(delta);
+                currentFps = +(1000 / delta || 0).toFixed(1);
+
+                // 绘制UI
+                drawUI();
+
+                frameCount++;
+                requestAnimationFrame(animate);
+            }
+
+            // 初始化并启动动画
+            ctx.font = '8px monospace';
+            animate();
+        })();
+    </script>
+</body>
+
+</html>

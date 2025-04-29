@@ -811,5 +811,28 @@
         "point_17": 5,
         "point_18": 5,
         "Final-Score": 83
+    },{
+        "LLM": "Qwen3-235B-A22B-Thinking",
+        "point_1": 5,
+        "point_2": 3,
+        "point_3": 5,
+        "point_4": 5,
+        "point_5": 5,
+        "point_6": 5,
+        "point_7": 5,
+        "point_8": 5,
+        "point_9": 0,
+        "point_10": 5,
+        "point_11": 5,
+        "point_12": 0,
+        "point_13": 5,
+        "point_14": 0,
+        "point_15": 3,
+        "point_16": 5,
+        "point_17": 5,
+        "point_18": 5,
+        "Final-Score": 71
     }
 ]
+
+
