@@ -15,7 +15,7 @@ KCORES LLM Arena - KCORES 大模型竞技场
 
 ## 真实世界编程能力测试 
 
-- version: **2025-04-15**
+- version: **2025-04-29**
 - Winner: **👑Gemini-2.5-Pro-Experimental-03-25**
 
 ### 评测内容
@@ -27,6 +27,8 @@ KCORES LLM Arena - KCORES 大模型竞技场
 目前最好的编程大模型是什么？**👑Gemini-2.5-Pro-Experimental-03-25** 
 
 那么除了 Gemini-2.5-Pro, 最好的选择是什么？答案是 **Claude** 全家桶, 无论是 **Claude-3.7** 还是 **Claude-3.5** 都是非常好的选择
+
+开源模型最强是哪一个? 当然是 **Qwen3-235B-A22B-Thinking**
 
 DeepSeek 系列呢? 答案是 **DeepSeek-V3-0324** 当然 **DeepSeek-R1** 也是非常好的选择
 
